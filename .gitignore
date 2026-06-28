@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# 本地状态 / 机密（绝不入库）
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+*.creds
+secrets.*
+config.local.*
+
+# 下载的课件镜像（体积大，不入库）
+downloads/
+mirror/
+courses_local/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 编辑器
+.idea/
+.vscode/
