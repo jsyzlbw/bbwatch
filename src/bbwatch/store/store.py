@@ -79,6 +79,13 @@ class Store:
             "UPDATE scan_run SET finished_at=?, status=? WHERE id=?", (now, status, scan_id)
         )
 
+    def last_scan_time(self) -> str | None:
+        row = self._conn.execute(
+            "SELECT finished_at FROM scan_run WHERE finished_at IS NOT NULL "
+            "ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        return row["finished_at"] if row else None
+
     # ---------------- baseline (per course/dimension) ----------------
     def baseline_established(self, course_id: str, dimension: str) -> bool:
         return (
