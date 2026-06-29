@@ -4,15 +4,19 @@ import argparse
 import getpass
 import sys
 from datetime import timedelta
+from pathlib import Path
 
 from .auth import login as adfs_login
 from .bbclient import BbClient
 from .config import AppPaths
+from .downloader import mirror
 from .notifier import MacNotifier, deliver_pending
 from .scanner import scan
 from .secrets import Credentials, load_credentials, store_credentials
 from .store import Store, now_utc, parse_utc
 from .transport import CurlCffiTransport, Transport
+
+DEFAULT_DEST = Path.home() / "Downloads" / "bbwatch"
 
 
 def run_whoami(transport: Transport, creds: Credentials, login_fn=adfs_login) -> str:
@@ -75,6 +79,38 @@ def run_mark_done(store, n: int, done: bool, now: str) -> str:
     return f"已将 [{n}] {t['name']}（{t['course_id']}）标记为{state}"
 
 
+def format_courses(courses: list) -> str:
+    if not courses:
+        return "没有在读课程"
+    return "\n".join(f"[{i}] {c.course_id}" for i, c in enumerate(courses, 1))
+
+
+def pick_course(courses: list, ref: str):
+    """按编号(1 起)或课程代码子串选课。"""
+    if ref.isdigit():
+        i = int(ref)
+        if 1 <= i <= len(courses):
+            return courses[i - 1]
+        raise ValueError(f"课程编号 {i} 超出范围（共 {len(courses)} 门）")
+    matches = [c for c in courses if ref.lower() in (c.course_id or "").lower()]
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        raise ValueError(f"未找到匹配课程: {ref}（用 bbwatch courses 查看）")
+    raise ValueError("匹配到多门：" + ", ".join(m.course_id for m in matches) + "，请用编号")
+
+
+def run_download(client, store, course, dest, *, now: str) -> str:
+    res = mirror(client, store, course, dest, now=now)
+    lines = [
+        f"下载完成：{course.course_id} → {dest}",
+        f"  新下载 {res.downloaded}，跳过(已最新) {res.skipped}，失败 {res.failed}",
+    ]
+    if res.errors:
+        lines.append("  错误：" + "; ".join(res.errors[:5]))
+    return "\n".join(lines)
+
+
 def cmd_setup(_args) -> int:
     username = input("学校账号(形如 学号@link.cuhk.edu.cn): ").strip()
     password = getpass.getpass("密码（输入不回显）: ")
@@ -98,6 +134,34 @@ def cmd_scan(_args) -> int:
     client = BbClient(transport)
     store = Store(paths.db_path)
     print(run_scan(client, store, MacNotifier(), now=now_utc()))
+    return 0
+
+
+def _login_client() -> BbClient:
+    creds = load_credentials()
+    transport = CurlCffiTransport()
+    adfs_login(transport, creds)
+    return BbClient(transport)
+
+
+def cmd_courses(_args) -> int:
+    client = _login_client()
+    me = client.get_me()
+    active = [c for c in client.list_courses(me.id) if c.is_active]
+    print(format_courses(active))
+    return 0
+
+
+def cmd_download(args) -> int:
+    paths = AppPaths()
+    paths.ensure_dirs()
+    client = _login_client()
+    me = client.get_me()
+    active = [c for c in client.list_courses(me.id) if c.is_active]
+    course = pick_course(active, args.ref)
+    dest = Path(args.dest) if args.dest else DEFAULT_DEST
+    store = Store(paths.db_path)
+    print(run_download(client, store, course, dest, now=now_utc()))
     return 0
 
 
@@ -138,6 +202,11 @@ def main(argv=None) -> int:
     p_undone = sub.add_parser("undone", help="把 tasks 列表第 N 项改回未完成")
     p_undone.add_argument("n", type=int, help="bbwatch tasks 中的编号")
     p_undone.set_defaults(fn=cmd_undone)
+    sub.add_parser("courses", help="列出在读课程(编号)").set_defaults(fn=cmd_courses)
+    p_dl = sub.add_parser("download", help="增量镜像某课程的全部课件")
+    p_dl.add_argument("ref", help="课程编号(见 bbwatch courses)或课程代码子串")
+    p_dl.add_argument("--dest", help=f"下载目录(默认 {DEFAULT_DEST})")
+    p_dl.set_defaults(fn=cmd_download)
     args = p.parse_args(argv)
     try:
         return args.fn(args)

@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from .diff import diff_announcements, diff_columns
+from .diff import diff_announcements, diff_columns, diff_contents
 from .models import Course
 
 
@@ -42,9 +42,27 @@ def scan(
     for c in courses:
         res.new_events += _scan_columns(client, store, c, uid, scan_id, now, res.failures)
         res.new_events += _scan_announcements(client, store, c, scan_id, now, res.failures)
+        res.new_events += _scan_contents(client, store, c, scan_id, now, res.failures)
 
     store.finish_scan(scan_id, "partial" if res.failures else "ok", now)
     return res
+
+
+def _scan_contents(client, store, course, scan_id, now, failures) -> int:
+    cid = course.id
+    dim = "contents"
+    try:
+        contents = [c for _, c in client.walk_contents(cid)]
+    except Exception as e:  # noqa: BLE001
+        failures.append(f"{course.course_id}/{dim}: {type(e).__name__}")
+        return 0
+    suppress = not store.baseline_established(cid, dim)
+    known = store.known_entities(cid, "content")
+    changes = diff_contents(known, contents, cid=cid, scan_id=scan_id, suppress=suppress)
+    n = sum(store.apply_change(ch, now) for ch in changes)
+    if suppress:
+        store.establish_baseline(cid, dim, now)
+    return n
 
 
 def _scan_columns(client, store, course, uid, scan_id, now, failures) -> int:

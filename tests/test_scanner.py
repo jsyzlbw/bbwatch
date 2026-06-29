@@ -1,4 +1,4 @@
-from bbwatch.models import Announcement, Column, ColumnStatus, Course
+from bbwatch.models import Announcement, Column, ColumnStatus, Content, Course
 from bbwatch.scanner import scan
 from bbwatch.store import Store
 
@@ -16,15 +16,21 @@ def _course(cid, active=True):
 
 
 class FakeClient:
-    def __init__(self, courses, cols, statuses, anns, fail=None):
+    def __init__(self, courses, cols, statuses, anns, fail=None, contents=None):
         self.courses = courses
         self.cols = cols  # {cid: [Column]}
         self.statuses = statuses  # {cid: {colid: ColumnStatus}}
         self.anns = anns  # {cid: [Announcement]}
         self.fail = fail or set()  # {(dim, cid)}
+        self.contents = contents or {}  # {cid: [(ancestors, Content)]}
 
     def list_courses(self, uid):
         return self.courses
+
+    def walk_contents(self, cid):
+        if ("contents", cid) in self.fail:
+            raise RuntimeError("boom")
+        return iter(self.contents.get(cid, []))
 
     def list_columns(self, cid):
         if ("columns", cid) in self.fail:
@@ -82,6 +88,27 @@ def test_dimension_failure_isolated():
     assert s.baseline_established("_c1", "announcements")
     assert s.baseline_established("_c2", "columns")
     assert "col:_c2:_q1" in s.known_entities("_c2", "column")
+
+
+def test_contents_dimension_detects_new_material():
+    s = Store(":memory:")
+    doc = Content("_d1", "Slides 1", "resource/x-bb-document", modified="2026-06-01T00:00:00.000Z")
+    cli = FakeClient(
+        courses=[_course("_c1")],
+        cols={"_c1": []},
+        statuses={"_c1": {}},
+        anns={"_c1": []},
+        contents={"_c1": [([], doc)]},
+    )
+    r1 = scan(cli, s, UID, now=NOW)
+    assert r1.new_events == 0  # 冷启动静默
+    assert s.baseline_established("_c1", "contents")
+    # 新增一个课件
+    doc2 = Content("_d2", "Slides 2", "resource/x-bb-document", modified="2026-06-02T00:00:00.000Z")
+    cli.contents["_c1"].append(([], doc2))
+    r2 = scan(cli, s, UID, now=NOW)
+    assert r2.new_events == 1
+    assert s.claim_pending_events(NOW)[0]["event_type"] == "new_material"
 
 
 def test_inactive_course_skipped():

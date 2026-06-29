@@ -8,9 +8,13 @@
 """
 from __future__ import annotations
 
+import json
+
 from .dedup import make_dedup_key
-from .models import Announcement, Column, ColumnStatus
+from .models import Announcement, Column, ColumnStatus, Content
 from .store import Change
+
+_FOLDER = "resource/x-bb-folder"
 
 
 def col_entity_key(cid: str, colid: str) -> str:
@@ -106,5 +110,46 @@ def diff_announcements(
         events: list[dict] = []
         if a.id and ek not in known and not suppress:
             events.append(_ev("new_announcement", ek, f"新公告: {a.title}", (a.body or "")[:140]))
+        changes.append(Change(seen=seen, events=events))
+    return changes
+
+
+def diff_contents(
+    known: dict,
+    contents: list[Content],
+    *,
+    cid: str,
+    scan_id: int,
+    suppress: bool,
+) -> list[Change]:
+    """新课件检测：非文件夹内容项 新 id→new_material；已知项 modified 变→material_updated。
+    文件夹也记入 seen(避免重复发现)，但不产生通知。"""
+    changes: list[Change] = []
+    for c in contents:
+        ek = f"content:{cid}:{c.id}"
+        seen = {
+            "entity_key": ek,
+            "kind": "content",
+            "course_id": cid,
+            "bb_id": c.id,
+            "due_utc": None,
+            "grade_status": None,
+            "grade_score": None,
+            "payload": {"title": c.title, "handler": c.handler, "modified": c.modified},
+            "scan_id": scan_id,
+        }
+        events: list[dict] = []
+        is_material = c.handler != _FOLDER
+        prev = known.get(ek)
+        if not suppress and is_material:
+            if prev is None:
+                events.append(_ev("new_material", ek, f"新课件: {c.title}", c.handler or ""))
+            else:
+                prev_mod = json.loads(prev["payload_json"]).get("modified")
+                if c.modified and prev_mod != c.modified:
+                    events.append(
+                        _ev("material_updated", ek, f"课件更新: {c.title}",
+                            c.modified or "", variant=c.modified)
+                    )
         changes.append(Change(seen=seen, events=events))
     return changes

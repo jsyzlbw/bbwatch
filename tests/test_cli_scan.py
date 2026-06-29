@@ -32,6 +32,9 @@ class FakeClient:
     def list_announcements(self, cid):
         return self.anns.get(cid, [])
 
+    def walk_contents(self, cid):
+        return iter([])
+
 
 class FakeNotifier:
     def __init__(self):
