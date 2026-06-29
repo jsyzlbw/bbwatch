@@ -56,9 +56,15 @@ def run_whoami(transport: Transport, creds: Credentials, login_fn=adfs_login) ->
 
 
 def run_scan(client, store, notifier, *, now: str, course_filter=None, archive_weeks: int = 0) -> str:
-    """登录后的扫描装配（client 已就绪，便于测试注入）。"""
+    """登录后的扫描装配（client 已就绪，便于测试注入）。
+    真实 client(含 clone) 并行抓取提速；测试用的 FakeClient 无 clone → 串行。"""
     me = client.get_me()
-    result = scan(client, store, me.id, now=now, course_filter=course_filter)
+    parallel = hasattr(client, "clone")
+    result = scan(
+        client, store, me.id, now=now, course_filter=course_filter,
+        fetch_workers=6 if parallel else 1,
+        client_factory=client.clone if parallel else None,
+    )
     archived = store.archive_overdue(now, archive_weeks) if archive_weeks else 0
     sent = deliver_pending(store, notifier, now)
     outstanding = store.outstanding_tasks()

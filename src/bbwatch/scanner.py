@@ -1,12 +1,13 @@
-"""扫描编排：per-course、维度独立、冷启动静默、complete 闸门（附录 C）。
+"""扫描编排：两段式——并行抓取(网络) + 串行 diff/写库(保证无漏/无重)。
 
-维度（columns / announcements）各自 try/except：任一异常 → 记 failure 并跳过该维度的
-diff/基线/通知（不污染、不软删）。某维度本轮完整成功且基线未建 → 只写快照并建立基线
-（冷启动静默）；基线已建 → 正常产生事件。基线按 (course, dimension) 独立。
+抓取阶段每个线程用独立 client(clone)，互不共享 curl 会话；store 只在串行阶段触碰。
+维度(columns/announcements/contents)独立 try/except：失败记 failure 并跳过该维度的
+diff/基线/通知(不污染)；某维度完整成功且基线未建 → 只写快照并建立基线(冷启动静默)。
 """
 from __future__ import annotations
 
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from .diff import diff_announcements, diff_columns, diff_contents
@@ -20,6 +21,40 @@ class ScanResult:
     failures: list[str] = field(default_factory=list)
 
 
+@dataclass
+class _Bundle:
+    """一门课抓取到的原始数据(供串行处理)。某维度 *_err 非空表示该维度抓取失败。"""
+
+    course: Course
+    columns: list | None = None
+    statuses: dict | None = None
+    anns: list | None = None
+    contents: list | None = None
+    col_err: str | None = None
+    ann_err: str | None = None
+    con_err: str | None = None
+
+
+def _fetch_course(client, course: Course, uid: str, include_contents: bool) -> _Bundle:
+    b = _Bundle(course=course)
+    try:
+        cols = client.list_columns(course.id)
+        b.columns = cols
+        b.statuses = {c.id: client.get_column_status(course.id, c.id, uid) for c in cols}
+    except Exception as e:  # noqa: BLE001
+        b.col_err = f"{course.course_id}/columns: {type(e).__name__}"
+    try:
+        b.anns = client.list_announcements(course.id)
+    except Exception as e:  # noqa: BLE001
+        b.ann_err = f"{course.course_id}/announcements: {type(e).__name__}"
+    if include_contents:
+        try:
+            b.contents = [c for _, c in client.walk_contents(course.id)]
+        except Exception as e:  # noqa: BLE001
+            b.con_err = f"{course.course_id}/contents: {type(e).__name__}"
+    return b
+
+
 def scan(
     client,
     store,
@@ -28,6 +63,9 @@ def scan(
     now: str,
     current_terms: set[str] | None = None,
     course_filter: Callable[[Course], bool] | None = None,
+    include_contents: bool = True,
+    fetch_workers: int = 1,
+    client_factory: Callable[[], object] | None = None,
 ) -> ScanResult:
     scan_id = store.start_scan(now)
     res = ScanResult()
@@ -39,65 +77,70 @@ def scan(
         courses = [c for c in courses if course_filter(c)]
     res.courses_scanned = len(courses)
 
-    for c in courses:
-        res.new_events += _scan_columns(client, store, c, uid, scan_id, now, res.failures)
-        res.new_events += _scan_announcements(client, store, c, scan_id, now, res.failures)
-        res.new_events += _scan_contents(client, store, c, scan_id, now, res.failures)
+    # ---- 阶段一：抓取(可并行；每线程独立 client) ----
+    def _fetch(course: Course) -> _Bundle:
+        c = client_factory() if (client_factory and fetch_workers > 1) else client
+        return _fetch_course(c, course, uid, include_contents)
+
+    if fetch_workers > 1 and client_factory and len(courses) > 1:
+        with ThreadPoolExecutor(max_workers=fetch_workers) as ex:
+            bundles = list(ex.map(_fetch, courses))
+    else:
+        bundles = [_fetch(c) for c in courses]
+
+    # ---- 阶段二：串行 diff + 写库(保证不变量) ----
+    for b in bundles:
+        res.new_events += _process_columns(store, b, scan_id, now, res.failures)
+        res.new_events += _process_announcements(store, b, scan_id, now, res.failures)
+        if include_contents:
+            res.new_events += _process_contents(store, b, scan_id, now, res.failures)
 
     store.finish_scan(scan_id, "partial" if res.failures else "ok", now)
     return res
 
 
-def _scan_contents(client, store, course, scan_id, now, failures) -> int:
-    cid = course.id
-    dim = "contents"
-    try:
-        contents = [c for _, c in client.walk_contents(cid)]
-    except Exception as e:  # noqa: BLE001
-        failures.append(f"{course.course_id}/{dim}: {type(e).__name__}")
+def _process_columns(store, b: _Bundle, scan_id, now, failures) -> int:
+    if b.col_err is not None:
+        failures.append(b.col_err)
         return 0
-    suppress = not store.baseline_established(cid, dim)
-    known = store.known_entities(cid, "content")
-    changes = diff_contents(known, contents, cid=cid, scan_id=scan_id, suppress=suppress)
-    n = sum(store.apply_change(ch, now) for ch in changes)
-    if suppress:
-        store.establish_baseline(cid, dim, now)
-    return n
-
-
-def _scan_columns(client, store, course, uid, scan_id, now, failures) -> int:
-    cid = course.id
-    dim = "columns"
-    try:
-        cols = client.list_columns(cid)
-        statuses = {col.id: client.get_column_status(cid, col.id, uid) for col in cols}
-    except Exception as e:  # noqa: BLE001  维度隔离：失败不污染
-        failures.append(f"{course.course_id}/{dim}: {type(e).__name__}")
-        return 0
-    suppress = not store.baseline_established(cid, dim)
+    cid = b.course.id
+    suppress = not store.baseline_established(cid, "columns")
     known = store.known_entities(cid, "column")
     changes = diff_columns(
-        known, cols, statuses, cid=cid, scan_id=scan_id, suppress=suppress,
-        course_code=course.name or course.course_id,  # 课程名更友好(如 MAT3007:Optimization_L01)
+        known, b.columns, b.statuses, cid=cid, scan_id=scan_id, suppress=suppress,
+        course_code=b.course.name or b.course.course_id,
     )
     n = sum(store.apply_change(ch, now) for ch in changes)
-    if suppress:  # 本维度完整成功（未抛错） → 建立基线
-        store.establish_baseline(cid, dim, now)
+    if suppress:
+        store.establish_baseline(cid, "columns", now)
     return n
 
 
-def _scan_announcements(client, store, course, scan_id, now, failures) -> int:
-    cid = course.id
-    dim = "announcements"
-    try:
-        anns = client.list_announcements(cid)
-    except Exception as e:  # noqa: BLE001
-        failures.append(f"{course.course_id}/{dim}: {type(e).__name__}")
+def _process_announcements(store, b: _Bundle, scan_id, now, failures) -> int:
+    if b.ann_err is not None:
+        failures.append(b.ann_err)
         return 0
-    suppress = not store.baseline_established(cid, dim)
+    cid = b.course.id
+    suppress = not store.baseline_established(cid, "announcements")
     known = store.known_entities(cid, "announcement")
-    changes = diff_announcements(known, anns, cid=cid, scan_id=scan_id, suppress=suppress)
+    changes = diff_announcements(known, b.anns, cid=cid, scan_id=scan_id, suppress=suppress)
     n = sum(store.apply_change(ch, now) for ch in changes)
     if suppress:
-        store.establish_baseline(cid, dim, now)
+        store.establish_baseline(cid, "announcements", now)
+    return n
+
+
+def _process_contents(store, b: _Bundle, scan_id, now, failures) -> int:
+    if b.con_err is not None:
+        failures.append(b.con_err)
+        return 0
+    if b.contents is None:
+        return 0
+    cid = b.course.id
+    suppress = not store.baseline_established(cid, "contents")
+    known = store.known_entities(cid, "content")
+    changes = diff_contents(known, b.contents, cid=cid, scan_id=scan_id, suppress=suppress)
+    n = sum(store.apply_change(ch, now) for ch in changes)
+    if suppress:
+        store.establish_baseline(cid, "contents", now)
     return n

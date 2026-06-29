@@ -17,6 +17,15 @@ class BbClient:
         self._t = transport
         self._relogin = relogin  # 会话失效(401)时重登的回调
 
+    def clone(self) -> "BbClient":
+        """造一个独立会话的副本(供并行抓取)：新 transport + 复制 cookie。
+        不带 relogin(并行中各线程不应触发共享重登)。"""
+        from .transport import CurlCffiTransport
+
+        t = CurlCffiTransport()
+        t.import_cookies(self._t.export_cookies())
+        return BbClient(t, relogin=None)
+
     def _raw_get(self, url: str, accept: str = "application/json"):
         r = self._t.request("GET", url, headers={"Accept": accept})
         if r.status == 401 and self._relogin is not None:

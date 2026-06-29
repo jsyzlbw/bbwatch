@@ -111,6 +111,30 @@ def test_contents_dimension_detects_new_material():
     assert s.claim_pending_events(NOW)[0]["event_type"] == "new_material"
 
 
+def test_parallel_fetch_no_miss_no_dup():
+    s = Store(":memory:")
+    cli = FakeClient(
+        courses=[_course("_c1"), _course("_c2")],
+        cols={"_c1": [Column("_h1", "HW1", DUE1)], "_c2": [Column("_q1", "Q1", DUE1)]},
+        statuses={"_c1": {"_h1": ColumnStatus("None")}, "_c2": {"_q1": ColumnStatus("None")}},
+        anns={"_c1": [], "_c2": []},
+    )
+    # 并行首扫：冷启动 0 通知、两课各建基线
+    r1 = scan(cli, s, UID, now=NOW, fetch_workers=4, client_factory=lambda: cli)
+    assert r1.new_events == 0 and r1.courses_scanned == 2
+    assert s.baseline_established("_c1", "columns") and s.baseline_established("_c2", "columns")
+    # 各加一新列 → 并行抓取后串行 diff 恰好 2 个事件(无漏无重)
+    cli.cols["_c1"].append(Column("_h2", "HW2", DUE1))
+    cli.statuses["_c1"]["_h2"] = ColumnStatus("None")
+    cli.cols["_c2"].append(Column("_q2", "Q2", DUE1))
+    cli.statuses["_c2"]["_q2"] = ColumnStatus("None")
+    r2 = scan(cli, s, UID, now=NOW, fetch_workers=4, client_factory=lambda: cli)
+    assert r2.new_events == 2
+    # 再扫不重复
+    r3 = scan(cli, s, UID, now=NOW, fetch_workers=4, client_factory=lambda: cli)
+    assert r3.new_events == 0
+
+
 def test_inactive_course_skipped():
     s = Store(":memory:")
     cli = FakeClient(
