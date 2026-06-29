@@ -1,0 +1,211 @@
+from __future__ import annotations
+
+import json
+import sqlite3
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+SCHEMA_VERSION = 1
+_SCHEMA = Path(__file__).parent / "schema.sql"
+
+
+def now_utc() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def parse_utc(s: str) -> datetime:
+    return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+def _add_seconds(iso: str, secs: int) -> str:
+    return (parse_utc(iso) + timedelta(seconds=secs)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+@dataclass
+class Change:
+    """diff 的产物：一个实体的快照 + 0..n 个待发事件。整体单事务落库。"""
+
+    seen: dict
+    events: list[dict] = field(default_factory=list)
+
+
+class Store:
+    def __init__(self, path: str | Path = ":memory:"):
+        # isolation_level=None → 自动提交模式，便于显式 BEGIN IMMEDIATE 控制原子性
+        self._conn = sqlite3.connect(str(path), isolation_level=None)
+        self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA busy_timeout=5000")
+        self._conn.execute("PRAGMA foreign_keys=ON")
+        self._init_schema()
+
+    def _init_schema(self) -> None:
+        self._conn.executescript(_SCHEMA.read_text())
+        row = self._conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        if row is None:
+            self._conn.execute(
+                "INSERT INTO meta(key, value) VALUES('schema_version', ?)", (str(SCHEMA_VERSION),)
+            )
+
+    def schema_version(self) -> int:
+        row = self._conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        return int(row["value"]) if row else 0
+
+    def close(self) -> None:
+        self._conn.close()
+
+    # ---------------- scan runs ----------------
+    def start_scan(self, now: str) -> int:
+        cur = self._conn.execute(
+            "INSERT INTO scan_run(started_at, status) VALUES(?, 'running')", (now,)
+        )
+        return cur.lastrowid
+
+    def finish_scan(self, scan_id: int, status: str, now: str) -> None:
+        self._conn.execute(
+            "UPDATE scan_run SET finished_at=?, status=? WHERE id=?", (now, status, scan_id)
+        )
+
+    # ---------------- baseline (per course/dimension) ----------------
+    def baseline_established(self, course_id: str, dimension: str) -> bool:
+        return (
+            self._conn.execute(
+                "SELECT 1 FROM course_baseline WHERE course_id=? AND dimension=?",
+                (course_id, dimension),
+            ).fetchone()
+            is not None
+        )
+
+    def establish_baseline(self, course_id: str, dimension: str, now: str) -> None:
+        self._conn.execute(
+            "INSERT OR IGNORE INTO course_baseline(course_id, dimension, established_at) "
+            "VALUES(?, ?, ?)",
+            (course_id, dimension, now),
+        )
+
+    # ---------------- known set (含 archived，附录 C M6) ----------------
+    def known_entities(self, course_id: str, kind: str) -> dict[str, sqlite3.Row]:
+        rows = self._conn.execute(
+            "SELECT * FROM seen_entity WHERE course_id=? AND kind=?", (course_id, kind)
+        ).fetchall()
+        return {r["entity_key"]: r for r in rows}
+
+    def mark_archived(self, entity_key: str) -> None:
+        self._conn.execute("UPDATE seen_entity SET archived=1 WHERE entity_key=?", (entity_key,))
+
+    # ---------------- core: 单事务写 seen + 事件 ----------------
+    def apply_change(self, change: Change, now: str) -> int:
+        """单事务: upsert seen_entity + INSERT OR IGNORE 每个事件。返回新插入事件数。"""
+        conn = self._conn
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._upsert_seen(change.seen, now)
+            inserted = 0
+            for ev in change.events:
+                cur = conn.execute(
+                    "INSERT OR IGNORE INTO event"
+                    "(dedup_key, entity_key, event_type, state, title, detail, created_at) "
+                    "VALUES(?, ?, ?, 'PENDING_NOTIFY', ?, ?, ?)",
+                    (ev["dedup_key"], ev["entity_key"], ev["event_type"], ev["title"],
+                     ev.get("detail"), now),
+                )
+                if cur.rowcount > 0:
+                    inserted += 1
+            conn.execute("COMMIT")
+            return inserted
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+
+    def _upsert_seen(self, seen: dict, now: str) -> None:
+        params = {
+            "entity_key": seen["entity_key"],
+            "kind": seen["kind"],
+            "course_id": seen["course_id"],
+            "bb_id": seen["bb_id"],
+            "due_utc": seen.get("due_utc"),
+            "grade_status": seen.get("grade_status"),
+            "grade_score": seen.get("grade_score"),
+            "payload_json": json.dumps(seen["payload"], ensure_ascii=False),
+            "scan_id": seen.get("scan_id"),
+            "now": now,
+        }
+        self._conn.execute(
+            """INSERT INTO seen_entity
+                 (entity_key, kind, course_id, bb_id, due_utc, grade_status, grade_score,
+                  payload_json, archived, first_seen_scan, last_seen_scan, created_at)
+               VALUES
+                 (:entity_key, :kind, :course_id, :bb_id, :due_utc, :grade_status, :grade_score,
+                  :payload_json, 0, :scan_id, :scan_id, :now)
+               ON CONFLICT(entity_key) DO UPDATE SET
+                  due_utc=excluded.due_utc,
+                  grade_status=excluded.grade_status,
+                  grade_score=excluded.grade_score,
+                  payload_json=excluded.payload_json,
+                  archived=0,
+                  last_seen_scan=excluded.last_seen_scan""",
+            params,
+        )
+
+    # ---------------- 通知 outbox ----------------
+    def claim_pending_events(self, now: str, limit: int = 50) -> list[sqlite3.Row]:
+        return self._conn.execute(
+            "SELECT * FROM event WHERE state='PENDING_NOTIFY' "
+            "AND (next_retry_at IS NULL OR next_retry_at<=?) ORDER BY id LIMIT ?",
+            (now, limit),
+        ).fetchall()
+
+    def mark_notified(self, event_id: int, now: str) -> None:
+        self._conn.execute("UPDATE event SET state='NOTIFIED' WHERE id=?", (event_id,))
+
+    def mark_failed(self, event_id: int, now: str, backoff_s: int = 300, max_attempts: int = 5) -> None:
+        row = self._conn.execute(
+            "SELECT notify_attempts FROM event WHERE id=?", (event_id,)
+        ).fetchone()
+        attempts = (row["notify_attempts"] if row else 0) + 1
+        if attempts >= max_attempts:
+            self._conn.execute(
+                "UPDATE event SET state='FAILED_NOTIFY', notify_attempts=? WHERE id=?",
+                (attempts, event_id),
+            )
+        else:
+            self._conn.execute(
+                "UPDATE event SET notify_attempts=?, next_retry_at=? WHERE id=?",
+                (attempts, _add_seconds(now, backoff_s * attempts), event_id),
+            )
+
+    # ---------------- 任务清单 ----------------
+    def outstanding_tasks(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM seen_entity WHERE kind='column' AND archived=0 "
+            "AND due_utc IS NOT NULL ORDER BY due_utc ASC"
+        ).fetchall()
+        out: list[dict] = []
+        for r in rows:
+            done = (r["grade_status"] in ("NeedsGrading", "Graded")) or (r["grade_score"] is not None)
+            ov = self._conn.execute(
+                "SELECT manual_done FROM task_override WHERE entity_key=?", (r["entity_key"],)
+            ).fetchone()
+            if ov and ov["manual_done"]:
+                done = True
+            if done:
+                continue
+            payload = json.loads(r["payload_json"])
+            out.append(
+                {
+                    "entity_key": r["entity_key"],
+                    "course_id": r["course_id"],
+                    "name": payload.get("name"),
+                    "due_utc": r["due_utc"],
+                }
+            )
+        return out
+
+    def mark_manual_done(self, entity_key: str, done: bool, now: str) -> None:
+        self._conn.execute(
+            "INSERT INTO task_override(entity_key, manual_done, updated_at) VALUES(?, ?, ?) "
+            "ON CONFLICT(entity_key) DO UPDATE SET manual_done=excluded.manual_done, "
+            "updated_at=excluded.updated_at",
+            (entity_key, 1 if done else 0, now),
+        )
