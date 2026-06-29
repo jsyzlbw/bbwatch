@@ -174,6 +174,18 @@ def cmd_config(_args) -> int:
     return 0
 
 
+def cmd_find(args) -> int:
+    paths = AppPaths()
+    paths.ensure_dirs()
+    store = Store(paths.db_path)
+    hits = store.search_downloads(args.kw)
+    if not hits:
+        print(f"未找到匹配 '{args.kw}' 的已下载文件（先 bbwatch download 下载课件）")
+    else:
+        print("\n".join(hits))
+    return 0
+
+
 def cmd_doctor(_args) -> int:
     from .ops import run_doctor
 
@@ -283,6 +295,9 @@ def main(argv=None) -> int:
     p_dl.add_argument("ref", help="课程编号(见 bbwatch courses)或课程代码子串")
     p_dl.add_argument("--dest", help=f"下载目录(默认 {DEFAULT_DEST})")
     p_dl.set_defaults(fn=cmd_download)
+    p_find = sub.add_parser("find", help="在已下载课件中按关键词检索(本地, 不联网)")
+    p_find.add_argument("kw", help="文件名/路径/课程 关键词")
+    p_find.set_defaults(fn=cmd_find)
     sub.add_parser("config", help="查看/生成配置文件").set_defaults(fn=cmd_config)
     sub.add_parser("doctor", help="健康自检(凭据/会话/数据库/端口)").set_defaults(fn=cmd_doctor)
     p_un = sub.add_parser("uninstall", help="清除凭据/会话(可选数据库)")

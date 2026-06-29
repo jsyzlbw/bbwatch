@@ -318,6 +318,30 @@ class Store:
             return True
         return False
 
+    def search_downloads(self, keyword: str) -> list[str]:
+        like = f"%{keyword}%"
+        rows = self._conn.execute(
+            "SELECT local_path FROM download WHERE status='done' "
+            "AND (local_path LIKE ? OR course_id LIKE ?) ORDER BY local_path",
+            (like, like),
+        ).fetchall()
+        return [r["local_path"] for r in rows]
+
+    def grading_backlog(self, now: str, days: int = 14) -> list[dict]:
+        """已交但久未出分(NeedsGrading 且截止已过 days 天)的作业，可催老师。"""
+        cutoff = _add_seconds(now, -days * 86400)
+        rows = self._conn.execute(
+            "SELECT entity_key, payload_json, due_utc FROM seen_entity "
+            "WHERE kind='column' AND archived=0 AND grade_status='NeedsGrading' "
+            "AND due_utc IS NOT NULL AND due_utc < ?",
+            (cutoff,),
+        ).fetchall()
+        return [
+            {"entity_key": r["entity_key"], "name": json.loads(r["payload_json"]).get("name"),
+             "due_utc": r["due_utc"]}
+            for r in rows
+        ]
+
     def record_download(
         self, att_key, course_id, local_path, src_modified, size, now, status="done"
     ) -> None:

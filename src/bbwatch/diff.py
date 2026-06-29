@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 
 from .dedup import make_dedup_key
+from .extract import announcement_is_important
 from .models import Announcement, Column, ColumnStatus, Content
 from .store import Change
 
@@ -109,7 +110,9 @@ def diff_announcements(
         }
         events: list[dict] = []
         if a.id and ek not in known and not suppress:
-            events.append(_ev("new_announcement", ek, f"新公告: {a.title}", (a.body or "")[:140]))
+            important = announcement_is_important((a.title or "") + " " + (a.body or ""))
+            title = f"📢[重要] 新公告: {a.title}" if important else f"新公告: {a.title}"
+            events.append(_ev("new_announcement", ek, title, (a.body or "")[:140]))
         changes.append(Change(seen=seen, events=events))
     return changes
 

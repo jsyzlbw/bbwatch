@@ -43,4 +43,8 @@ def build_session_summary(store, now: str, *, top_n: int = 5, stale_hours: int =
             lines.append(
                 f"⚠ 距上次扫描已约 {int(gap_h)} 小时，且有临近截止——建议 bbwatch scan 刷新。"
             )
+
+    backlog = store.grading_backlog(now)
+    if backlog:
+        lines.append(f"⏳ {len(backlog)} 项已交作业逾 2 周未出分（可催老师）")
     return "\n".join(lines)

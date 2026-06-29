@@ -6,8 +6,11 @@
 from __future__ import annotations
 
 import re
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from .extract import is_exam_file
 
 _ILLEGAL = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -21,6 +24,7 @@ class MirrorResult:
     downloaded: int = 0
     skipped: int = 0
     failed: int = 0
+    exams: int = 0
     files: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -63,6 +67,14 @@ def mirror(client, store, course, dest, *, now) -> MirrorResult:
                 )
                 res.downloaded += 1
                 res.files.append(str(target))
+                # 往年卷归集：文件名或所在文件夹像考试/真题 → 复制一份到 _exams/
+                if is_exam_file(att.file_name) or any(is_exam_file(a) for a in ancestors):
+                    exams_dir = base / "_exams"
+                    exams_dir.mkdir(parents=True, exist_ok=True)
+                    dst = exams_dir / target.name
+                    if not dst.exists():
+                        shutil.copy2(target, dst)
+                        res.exams += 1
             except Exception as e:  # noqa: BLE001
                 res.failed += 1
                 res.errors.append(f"{att.file_name}: {type(e).__name__}")
