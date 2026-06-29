@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .auth import login as adfs_login
 from .bbclient import BbClient
-from .config import AppPaths
+from .config import DEFAULT_CONFIG_TOML, AppPaths, load_config, make_course_filter
 from .downloader import mirror
 from .notifier import MacNotifier, deliver_pending
 from .scanner import scan
@@ -55,10 +55,11 @@ def run_whoami(transport: Transport, creds: Credentials, login_fn=adfs_login) ->
     return _identity_summary(BbClient(transport))
 
 
-def run_scan(client, store, notifier, *, now: str) -> str:
+def run_scan(client, store, notifier, *, now: str, course_filter=None, archive_weeks: int = 0) -> str:
     """登录后的扫描装配（client 已就绪，便于测试注入）。"""
     me = client.get_me()
-    result = scan(client, store, me.id, now=now)
+    result = scan(client, store, me.id, now=now, course_filter=course_filter)
+    archived = store.archive_overdue(now, archive_weeks) if archive_weeks else 0
     sent = deliver_pending(store, notifier, now)
     outstanding = store.outstanding_tasks()
     lines = [
@@ -66,6 +67,8 @@ def run_scan(client, store, notifier, *, now: str) -> str:
     ]
     if result.failures:
         lines.append(f"⚠ 部分维度失败 {len(result.failures)} 处：{'; '.join(result.failures[:5])}")
+    if archived:
+        lines.append(f"已归档 {archived} 个逾期旧作业")
     lines.append(f"未完成作业：{len(outstanding)} 项（bbwatch tasks 查看）")
     return "\n".join(lines)
 
@@ -149,8 +152,48 @@ def cmd_whoami(_args) -> int:
 
 
 def cmd_scan(_args) -> int:
-    client, store, _paths = _authed()
-    print(run_scan(client, store, MacNotifier(), now=now_utc()))
+    client, store, paths = _authed()
+    cfg = load_config(paths.config_path)
+    print(run_scan(
+        client, store, MacNotifier(), now=now_utc(),
+        course_filter=make_course_filter(cfg), archive_weeks=cfg.archive_overdue_weeks,
+    ))
+    return 0
+
+
+def cmd_config(_args) -> int:
+    paths = AppPaths()
+    paths.ensure_dirs()
+    if not paths.config_path.exists():
+        paths.config_path.write_text(DEFAULT_CONFIG_TOML)
+        print(f"已生成默认配置：{paths.config_path}")
+    cfg = load_config(paths.config_path)
+    print(f"配置文件：{paths.config_path}")
+    print(f"  include(白名单)={cfg.include}  exclude(黑名单)={cfg.exclude}")
+    print(f"  归档逾期周数={cfg.archive_overdue_weeks}  下载目录={cfg.download_dest}  端口={cfg.dashboard_port}")
+    return 0
+
+
+def cmd_doctor(_args) -> int:
+    from .ops import run_doctor
+
+    paths = AppPaths()
+    paths.ensure_dirs()
+    print(run_doctor(paths))
+    return 0
+
+
+def cmd_uninstall(args) -> int:
+    from .ops import run_uninstall
+
+    paths = AppPaths()
+    if not args.yes:
+        extra = "、本地数据库" if args.purge_db else ""
+        ans = input(f"将清除钥匙串凭据与会话缓存{extra}。确定? [y/N] ").strip().lower()
+        if ans != "y":
+            print("已取消")
+            return 0
+    print(run_uninstall(paths, purge_db=args.purge_db))
     return 0
 
 
@@ -163,11 +206,12 @@ def cmd_courses(_args) -> int:
 
 
 def cmd_download(args) -> int:
-    client, store, _paths = _authed()
+    client, store, paths = _authed()
+    cfg = load_config(paths.config_path)
     me = client.get_me()
     active = [c for c in client.list_courses(me.id) if c.is_active]
     course = pick_course(active, args.ref)
-    dest = Path(args.dest) if args.dest else DEFAULT_DEST
+    dest = Path(args.dest) if args.dest else Path(cfg.download_dest).expanduser()
     print(run_download(client, store, course, dest, now=now_utc()))
     return 0
 
@@ -180,7 +224,7 @@ def cmd_dashboard(args) -> int:
     paths = AppPaths()
     paths.ensure_dirs()
     state = DashboardState(store_factory=lambda: Store(paths.db_path), now_fn=now_utc)
-    httpd, port = serve(state, port=args.port or 8765)
+    httpd, port = serve(state, port=args.port or load_config(paths.config_path).dashboard_port)
     url = f"http://127.0.0.1:{port}/"
     print(f"任务清单：{url}（Ctrl-C 退出）")
     try:
@@ -239,6 +283,12 @@ def main(argv=None) -> int:
     p_dl.add_argument("ref", help="课程编号(见 bbwatch courses)或课程代码子串")
     p_dl.add_argument("--dest", help=f"下载目录(默认 {DEFAULT_DEST})")
     p_dl.set_defaults(fn=cmd_download)
+    sub.add_parser("config", help="查看/生成配置文件").set_defaults(fn=cmd_config)
+    sub.add_parser("doctor", help="健康自检(凭据/会话/数据库/端口)").set_defaults(fn=cmd_doctor)
+    p_un = sub.add_parser("uninstall", help="清除凭据/会话(可选数据库)")
+    p_un.add_argument("--purge-db", action="store_true", help="同时删除本地数据库")
+    p_un.add_argument("--yes", action="store_true", help="跳过确认")
+    p_un.set_defaults(fn=cmd_uninstall)
     args = p.parse_args(argv)
     try:
         return args.fn(args)

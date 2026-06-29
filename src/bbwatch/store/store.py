@@ -261,6 +261,33 @@ class Store:
         """未完成作业(供 scan 摘要)：actionable 中未手动完成的。"""
         return [t for t in self.actionable_tasks() if not t["done"]]
 
+    def archive_overdue(self, now: str, weeks: int) -> int:
+        """归档逾期超过 weeks 周且未完成的作业(减少清单杂乱)。归档行仍留在 diff 已知集，
+        不影响去重(M6)，仅从 actionable/outstanding 隐藏。返回归档数。"""
+        if weeks <= 0:
+            return 0
+        cutoff = _add_seconds(now, -weeks * 7 * 86400)
+        rows = self._conn.execute(
+            "SELECT entity_key, grade_status, grade_score FROM seen_entity "
+            "WHERE kind='column' AND archived=0 AND due_utc IS NOT NULL AND due_utc < ?",
+            (cutoff,),
+        ).fetchall()
+        n = 0
+        for r in rows:
+            auto_done = (r["grade_status"] in ("NeedsGrading", "Graded")) or (
+                r["grade_score"] is not None
+            )
+            ov = self._conn.execute(
+                "SELECT manual_done FROM task_override WHERE entity_key=?", (r["entity_key"],)
+            ).fetchone()
+            if auto_done or (ov and ov["manual_done"]):
+                continue  # 已完成的不必归档(不算杂乱)
+            self._conn.execute(
+                "UPDATE seen_entity SET archived=1 WHERE entity_key=?", (r["entity_key"],)
+            )
+            n += 1
+        return n
+
     def mark_manual_done(self, entity_key: str, done: bool, now: str) -> None:
         self._conn.execute(
             "INSERT INTO task_override(entity_key, manual_done, updated_at) VALUES(?, ?, ?) "
