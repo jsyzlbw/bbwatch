@@ -53,10 +53,11 @@ bbwatch uninstall         # 清除凭据/会话(可选 --purge-db)
 
 ## 使用（Claude Code 插件）
 
-```
-/plugin marketplace add /Users/mac/Programming/cuhkszbb
-/plugin install bbwatch@bill-plugins
-```
+**给同学最省事**：在 Claude Code 里对 AI 说一句话即可全自动安装+配置：
+
+> 帮我安装这个 Claude Code 插件：`https://github.com/<OWNER>/bbwatch`，我的账号是 `125xxxxxx@link.cuhk.edu.cn`，密码是 `xxxx`
+
+完整安装/分发说明见 **[INSTALL.md](INSTALL.md)**（AI 一键安装、手动安装、开发者分发、Windows 说明）。底层走 `claude plugin install` + Setup 钩子自举（在持久目录建 venv 装引擎），凭据非交互写入本机钥匙串。
 
 装好后：
 

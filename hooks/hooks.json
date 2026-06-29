@@ -1,11 +1,23 @@
 {
   "hooks": {
+    "Setup": [
+      {
+        "matcher": "init",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap.sh\"",
+            "timeout": 300
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/.venv/bin/python ${CLAUDE_PLUGIN_ROOT}/scripts/session_start.py",
+            "command": "\"${CLAUDE_PLUGIN_DATA}/.venv/bin/python\" \"${CLAUDE_PLUGIN_ROOT}/scripts/session_start.py\"",
             "timeout": 15
           }
         ]

@@ -1,12 +1,11 @@
 ---
-description: 配置 bbwatch（录入学校账号密码到 macOS 钥匙串）
+description: 配置 bbwatch（把学校账号密码存入 macOS 钥匙串）
 ---
 
-`bbwatch setup` 需要在**终端**里交互输入密码（不回显），无法在对话里安全完成。请告诉用户：
+向用户索取 `学号@link.cuhk.edu.cn` 与密码。拿到后，**把凭据放进环境变量**（避免明文出现在命令参数里）并运行：
 
-在终端运行：
 ```
-cd <bbwatch 目录> && .venv/bin/bbwatch setup
+BBWATCH_USERNAME='学号@link.cuhk.edu.cn' BBWATCH_PASSWORD='密码' "${CLAUDE_PLUGIN_DATA}/.venv/bin/bbwatch" setup
 ```
-按提示输入 `学号@link.cuhk.edu.cn` 与密码（存入 macOS 钥匙串，不落盘明文）。
-完成后即可使用 /bb-scan、/bb-tasks、/bb-download。
+
+随后运行 `"${CLAUDE_PLUGIN_DATA}/.venv/bin/bbwatch" doctor` 确认配置成功。提醒用户：密码只存于本机 macOS 钥匙串。

@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "bbwatch": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/.venv/bin/python",
+      "command": "${CLAUDE_PLUGIN_DATA}/.venv/bin/python",
       "args": ["-m", "bbwatch.mcp_server"]
     }
   }

@@ -14,7 +14,9 @@ def test_plugin_json_valid():
 
 def test_mcp_json_points_to_server():
     d = json.loads((ROOT / ".mcp.json").read_text())
-    assert d["mcpServers"]["bbwatch"]["args"] == ["-m", "bbwatch.mcp_server"]
+    srv = d["mcpServers"]["bbwatch"]
+    assert srv["args"] == ["-m", "bbwatch.mcp_server"]
+    assert "CLAUDE_PLUGIN_DATA" in srv["command"]  # 引擎在持久数据目录的 venv
 
 
 def test_marketplace_json_lists_bbwatch():
@@ -22,9 +24,15 @@ def test_marketplace_json_lists_bbwatch():
     assert any(p["name"] == "bbwatch" for p in d["plugins"])
 
 
-def test_hooks_json_has_sessionstart():
+def test_hooks_json_has_sessionstart_and_setup():
     d = json.loads((ROOT / "hooks" / "hooks.json").read_text())
     assert "SessionStart" in d["hooks"]
+    assert "Setup" in d["hooks"]  # 安装后自举
+
+
+def test_bootstrap_and_install_docs_exist():
+    assert (ROOT / "scripts" / "bootstrap.sh").exists()
+    assert (ROOT / "INSTALL.md").exists()
 
 
 def test_commands_have_frontmatter():
