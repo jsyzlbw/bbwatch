@@ -44,17 +44,35 @@ def run_scan(client, store, notifier, *, now: str) -> str:
 
 
 def format_tasks(tasks: list[dict], now: str) -> str:
+    """带编号 + ○/✓ 的可操作作业清单。编号即 done/undone 的引用。"""
     if not tasks:
-        return "没有未完成的作业 🎉"
+        return "没有需要跟踪的作业 🎉"
     now_dt = parse_utc(now)
     lines = []
-    for t in tasks:
+    for i, t in enumerate(tasks, 1):
+        mark = "✓" if t.get("done") else "○"
         due = parse_utc(t["due_utc"])
         local = due + timedelta(hours=8)
-        delta_h = (due - now_dt).total_seconds() / 3600
-        tag = "[逾期] " if delta_h < 0 else ("[紧急] " if delta_h <= 24 else "")
-        lines.append(f"{tag}{local.strftime('%m-%d %H:%M')}  {t['name']}  ({t['course_id']})")
+        if t.get("done"):
+            tag = ""
+        else:
+            delta_h = (due - now_dt).total_seconds() / 3600
+            tag = "[逾期] " if delta_h < 0 else ("[紧急] " if delta_h <= 24 else "")
+        lines.append(
+            f"[{i}] {mark} {tag}{local.strftime('%m-%d %H:%M')}  {t['name']}  ({t['course_id']})"
+        )
     return "\n".join(lines)
+
+
+def run_mark_done(store, n: int, done: bool, now: str) -> str:
+    """把 `bbwatch tasks` 列表中第 n 项(1 起)标记为 完成/未完成。"""
+    tasks = store.actionable_tasks()
+    if n < 1 or n > len(tasks):
+        raise ValueError(f"任务编号 {n} 超出范围（当前共 {len(tasks)} 项），先运行 bbwatch tasks 查看")
+    t = tasks[n - 1]
+    store.mark_manual_done(t["entity_key"], done, now)
+    state = "已完成 ✓" if done else "未完成 ○"
+    return f"已将 [{n}] {t['name']}（{t['course_id']}）标记为{state}"
 
 
 def cmd_setup(_args) -> int:
@@ -87,7 +105,23 @@ def cmd_tasks(_args) -> int:
     paths = AppPaths()
     paths.ensure_dirs()
     store = Store(paths.db_path)
-    print(format_tasks(store.outstanding_tasks(), now_utc()))
+    print(format_tasks(store.actionable_tasks(), now_utc()))
+    return 0
+
+
+def cmd_done(args) -> int:
+    paths = AppPaths()
+    paths.ensure_dirs()
+    store = Store(paths.db_path)
+    print(run_mark_done(store, args.n, done=True, now=now_utc()))
+    return 0
+
+
+def cmd_undone(args) -> int:
+    paths = AppPaths()
+    paths.ensure_dirs()
+    store = Store(paths.db_path)
+    print(run_mark_done(store, args.n, done=False, now=now_utc()))
     return 0
 
 
@@ -97,7 +131,13 @@ def main(argv=None) -> int:
     sub.add_parser("setup", help="录入并保存学校账号密码到钥匙串").set_defaults(fn=cmd_setup)
     sub.add_parser("whoami", help="登录并打印身份与课程数").set_defaults(fn=cmd_whoami)
     sub.add_parser("scan", help="扫描 BB，检测新作业/改期/公告/出分并通知").set_defaults(fn=cmd_scan)
-    sub.add_parser("tasks", help="列出未完成作业(按截止排序)").set_defaults(fn=cmd_tasks)
+    sub.add_parser("tasks", help="列出可跟踪作业(编号 + ○/✓)").set_defaults(fn=cmd_tasks)
+    p_done = sub.add_parser("done", help="把 tasks 列表第 N 项标记为已完成")
+    p_done.add_argument("n", type=int, help="bbwatch tasks 中的编号")
+    p_done.set_defaults(fn=cmd_done)
+    p_undone = sub.add_parser("undone", help="把 tasks 列表第 N 项改回未完成")
+    p_undone.add_argument("n", type=int, help="bbwatch tasks 中的编号")
+    p_undone.set_defaults(fn=cmd_undone)
     args = p.parse_args(argv)
     try:
         return args.fn(args)

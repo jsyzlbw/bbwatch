@@ -176,21 +176,24 @@ class Store:
             )
 
     # ---------------- 任务清单 ----------------
-    def outstanding_tasks(self) -> list[dict]:
+    def actionable_tasks(self) -> list[dict]:
+        """可手动跟踪的作业：带 due、未归档、且**未被系统判定为已完成(出分/已交)**的列。
+        其完成状态由手动勾选(task_override.manual_done)控制，故可来回切换。
+        每项含 done(bool, =手动已完成)。按截止升序。"""
         rows = self._conn.execute(
             "SELECT * FROM seen_entity WHERE kind='column' AND archived=0 "
             "AND due_utc IS NOT NULL ORDER BY due_utc ASC"
         ).fetchall()
         out: list[dict] = []
         for r in rows:
-            done = (r["grade_status"] in ("NeedsGrading", "Graded")) or (r["grade_score"] is not None)
+            auto_done = (r["grade_status"] in ("NeedsGrading", "Graded")) or (
+                r["grade_score"] is not None
+            )
+            if auto_done:
+                continue  # 系统已知完成(出分/已交)，无需手动管理
             ov = self._conn.execute(
                 "SELECT manual_done FROM task_override WHERE entity_key=?", (r["entity_key"],)
             ).fetchone()
-            if ov and ov["manual_done"]:
-                done = True
-            if done:
-                continue
             payload = json.loads(r["payload_json"])
             out.append(
                 {
@@ -198,9 +201,14 @@ class Store:
                     "course_id": r["course_id"],
                     "name": payload.get("name"),
                     "due_utc": r["due_utc"],
+                    "done": bool(ov and ov["manual_done"]),
                 }
             )
         return out
+
+    def outstanding_tasks(self) -> list[dict]:
+        """未完成作业(供 scan 摘要)：actionable 中未手动完成的。"""
+        return [t for t in self.actionable_tasks() if not t["done"]]
 
     def mark_manual_done(self, entity_key: str, done: bool, now: str) -> None:
         self._conn.execute(

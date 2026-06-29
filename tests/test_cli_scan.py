@@ -57,19 +57,18 @@ def test_run_scan_first_silent_then_detects():
     assert "未完成作业：2 项" in second
 
 
-def test_format_tasks_markers_and_order():
+def test_format_tasks_index_marks_and_markers():
     tasks = [
-        {"due_utc": DUE_PAST, "name": "Old", "course_id": "MAT"},
-        {"due_utc": DUE_SOON, "name": "Soon", "course_id": "CSC"},
-        {"due_utc": DUE_LATER, "name": "Later", "course_id": "STA"},
+        {"due_utc": DUE_PAST, "name": "Old", "course_id": "MAT", "done": False},
+        {"due_utc": DUE_SOON, "name": "Soon", "course_id": "CSC", "done": False},
+        {"due_utc": DUE_LATER, "name": "Later", "course_id": "STA", "done": True},
     ]
-    out = format_tasks(tasks, NOW)
-    lines = out.splitlines()
-    assert "[逾期]" in lines[0] and "Old" in lines[0]
-    assert "[紧急]" in lines[1] and "Soon" in lines[1]
-    assert lines[2].startswith("07-")  # Later, 无标记, +8 后仍 7 月
-    assert "[" not in lines[2]
+    lines = format_tasks(tasks, NOW).splitlines()
+    assert lines[0].startswith("[1] ○") and "[逾期]" in lines[0] and "Old" in lines[0]
+    assert lines[1].startswith("[2] ○") and "[紧急]" in lines[1] and "Soon" in lines[1]
+    assert lines[2].startswith("[3] ✓") and "Later" in lines[2]
+    assert "逾期" not in lines[2] and "紧急" not in lines[2]  # 已完成项不显示紧急/逾期
 
 
 def test_format_tasks_empty():
-    assert "没有未完成" in format_tasks([], NOW)
+    assert "没有需要跟踪" in format_tasks([], NOW)
