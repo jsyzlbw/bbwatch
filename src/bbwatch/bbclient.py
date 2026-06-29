@@ -114,11 +114,14 @@ class BbClient:
         )
 
     def list_contents(self, cid: str) -> list[Content]:
-        rows = self._paginate(f"{API}/courses/{cid}/contents?limit=100")
+        # 行政组织/无内容区的课程会 4xx → 视为空(维度隔离不再误报失败)
+        rows = self._paginate(f"{API}/courses/{cid}/contents?limit=100", tolerate_missing=True)
         return [self._to_content(c) for c in rows]
 
     def list_content_children(self, cid: str, content_id: str) -> list[Content]:
-        rows = self._paginate(f"{API}/courses/{cid}/contents/{content_id}/children?limit=100")
+        rows = self._paginate(
+            f"{API}/courses/{cid}/contents/{content_id}/children?limit=100", tolerate_missing=True
+        )
         return [self._to_content(c) for c in rows]
 
     def walk_contents(self, cid: str, max_depth: int = 12) -> Iterator[tuple[list[str], Content]]:

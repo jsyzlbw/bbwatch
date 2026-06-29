@@ -28,6 +28,13 @@ def test_walk_contents_recurses():
     assert items == [([], "Content"), (["Content"], "Slides 1"), ([], "Syllabus")]
 
 
+def test_list_contents_4xx_returns_empty():
+    # 行政组织/无内容区课程 → 4xx 视为空，不抛错
+    url = C + "/contents?limit=100"
+    t = FakeTransport({("GET", url): Response(403, {"Content-Type": "application/json"}, "{}", "u")})
+    assert BbClient(t).list_contents("_c1") == []
+
+
 def test_list_attachments_404_returns_empty():
     url = C + "/contents/_f1/attachments?limit=100"
     t = FakeTransport({("GET", url): Response(404, {"Content-Type": "application/json"}, "{}", "u")})
