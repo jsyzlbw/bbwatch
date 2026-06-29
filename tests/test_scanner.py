@@ -3,7 +3,7 @@ from bbwatch.scanner import scan
 from bbwatch.store import Store
 
 NOW = "2026-06-28T00:00:00.000Z"
-UID = "_49765_1"
+UID = "_10000_1"
 DUE1 = "2026-06-30T15:59:00.000Z"
 
 

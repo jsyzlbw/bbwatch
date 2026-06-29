@@ -1,9 +1,7 @@
 # 安装指南
 
-> 把 `<OWNER>/bbwatch` 换成你的实际 GitHub 仓库（如 `liangbowen/bbwatch`）。
-> 插件市场名是 `bill-plugins`（在 `.claude-plugin/marketplace.json` 里，可改）。
-
-前置：已安装 **Claude Code CLI** 与 **Python ≥ 3.11**（macOS / Linux）。
+> 仓库：`https://github.com/jsyzlbw/bbwatch` ｜ 插件市场名 `bill-plugins`（见 `.claude-plugin/marketplace.json`）。
+> 前置：已安装 **Claude Code CLI** 与 **Python ≥ 3.11**（macOS / Linux）。
 
 ---
 
@@ -11,14 +9,14 @@
 
 在 Claude Code 对话框发给 AI（一句话）：
 
-> 帮我安装这个 Claude Code 插件：`https://github.com/<OWNER>/bbwatch`
+> 帮我安装这个 Claude Code 插件：`https://github.com/jsyzlbw/bbwatch`
 > 我的账号是 `125xxxxxx@link.cuhk.edu.cn`，密码是 `xxxxxx`
 
 AI 会执行下面三步（你也可以自己在终端照做）：
 
 ```bash
 # 1) 添加插件市场并安装(用户级，全局可用)
-claude plugin marketplace add <OWNER>/bbwatch
+claude plugin marketplace add jsyzlbw/bbwatch
 claude plugin install bbwatch@bill-plugins --scope user
 
 # 2) 触发"安装后自举"：建虚拟环境 + 装引擎 + 写入凭据
@@ -57,7 +55,7 @@ claude --init-only
 ## C. 仅当命令行工具用（不装插件）
 
 ```bash
-git clone https://github.com/<OWNER>/bbwatch && cd bbwatch
+git clone https://github.com/jsyzlbw/bbwatch && cd bbwatch
 python3 -m venv .venv && .venv/bin/pip install -e .
 .venv/bin/bbwatch setup        # 终端输入账号密码
 .venv/bin/bbwatch scan         # 之后: tasks / dashboard / download MAT3007 / find / doctor

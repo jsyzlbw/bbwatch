@@ -1,5 +1,5 @@
 {"results":[
-  {"id":"_m1_1","userId":"_49765_1","courseId":"_17236_1","courseRoleId":"Student",
+  {"id":"_m1_1","userId":"_10000_1","courseId":"_17236_1","courseRoleId":"Student",
    "course":{"id":"_17236_1","courseId":"MAT3007:Optimization_L01","name":"MAT3007:Optimization_L01",
    "termId":"_424_1","ultraStatus":"Classic","availability":{"available":"Yes"}}}
-],"paging":{"nextPage":"/learn/api/public/v1/users/_49765_1/courses?expand=course&limit=1&offset=1"}}
+],"paging":{"nextPage":"/learn/api/public/v1/users/_10000_1/courses?expand=course&limit=1&offset=1"}}

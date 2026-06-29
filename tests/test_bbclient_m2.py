@@ -22,20 +22,20 @@ def test_list_columns_filters_summary_columns():
 
 
 def test_get_column_status_graded():
-    url = BB + API + "/courses/_17236_1/gradebook/columns/_c_hw1/users/_49765_1"
+    url = BB + API + "/courses/_17236_1/gradebook/columns/_c_hw1/users/_10000_1"
     t = FakeTransport(
         {("GET", url): Response(200, {"Content-Type": "application/json"},
                                 '{"status":"Graded","score":100.0}', "u")}
     )
-    s = BbClient(t).get_column_status("_17236_1", "_c_hw1", "_49765_1")
+    s = BbClient(t).get_column_status("_17236_1", "_c_hw1", "_10000_1")
     assert s.status == "Graded" and s.score == 100.0
     assert s.is_done and s.is_graded
 
 
 def test_get_column_status_404_is_not_submitted():
-    url = BB + API + "/courses/_17236_1/gradebook/columns/_c_hw4/users/_49765_1"
+    url = BB + API + "/courses/_17236_1/gradebook/columns/_c_hw4/users/_10000_1"
     t = FakeTransport({("GET", url): Response(404, {"Content-Type": "application/json"}, "{}", "u")})
-    s = BbClient(t).get_column_status("_17236_1", "_c_hw4", "_49765_1")
+    s = BbClient(t).get_column_status("_17236_1", "_c_hw4", "_10000_1")
     assert s.status == "None" and s.score is None
     assert not s.is_done
 

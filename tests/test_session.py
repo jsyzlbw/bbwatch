@@ -104,13 +104,13 @@ class FlakyTransport:
         if not self.logged_in:
             return Response(401, {}, "", url)
         return Response(200, {"Content-Type": "application/json"},
-                        '{"id":"_49765_1","userName":"x"}', url)
+                        '{"id":"_10000_1","userName":"x"}', url)
 
 
 def test_bbclient_replays_on_401():
     t = FlakyTransport()
     client = BbClient(t, relogin=lambda: setattr(t, "logged_in", True))
-    assert client.get_me().id == "_49765_1"
+    assert client.get_me().id == "_10000_1"
 
 
 def test_bbclient_session_refresh_error_when_still_401():

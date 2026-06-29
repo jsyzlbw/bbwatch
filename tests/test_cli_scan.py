@@ -18,7 +18,7 @@ class FakeClient:
         self.anns = {"_c1": [Announcement("_a1", "Ann1", "2026-06-20T00:00:00Z")]}
 
     def get_me(self):
-        return Me(id="_49765_1", user_name="125090374", given_name="梁博文")
+        return Me(id="_10000_1", user_name="120000000", given_name="示例同学")
 
     def list_courses(self, uid):
         return self.courses

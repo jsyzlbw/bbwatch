@@ -2,11 +2,11 @@ from bbwatch.logging_setup import redact
 
 
 def test_redacts_password_query():
-    s = "POST .../authorize?code=abc123&UserName=125090374&Password=secret"
+    s = "POST .../authorize?code=abc123&UserName=120000000&Password=secret"
     out = redact(s)
     assert "secret" not in out
     assert "abc123" not in out
-    assert "125090374" not in out
+    assert "120000000" not in out
 
 
 def test_redacts_cookie_and_token():

@@ -1,117 +1,127 @@
 # bbwatch
 
-> 港中深（CUHK-SZ）Blackboard 作业监控 + 课件批量下载 —— 一个 Claude Code 插件 / 命令行工具。
+> 港中深（CUHK-SZ）Blackboard 的**作业雷达 + 课件下载器**——装进 Claude Code，平时**跟它说话**就行，不用记命令。
 
-老师在 `bb.cuhk.edu.cn` 上布置作业、发公告**不一定发邮件**，容易漏做；期末想批量下课件又很麻烦。
-bbwatch 自动扫描你的 BB，发现新作业 / 改期 / 公告 / 出分 / 新课件就提醒你，维护一份可勾选的任务清单，并能一键把课件增量镜像到本地。
+老师在 `bb.cuhk.edu.cn` 上布置作业、发公告**不一定发邮件**，很容易漏做；期末想**批量下课件**又得一个个点。bbwatch 帮你盯着 BB，有新作业 / 改期 / 公告 / 出分就提醒你，维护一份漂亮的任务清单，还能一句话把整门课的课件下到本地。
 
-- 🔒 **本地优先**：密码只存 macOS 钥匙串，数据只在你自己机器上；除附件下载外只发只读请求，**从不调用花名册等含他人隐私的接口**。
-- 🎯 **绝不漏、绝不重复**：用稳定 id 与本地状态做全量 diff + 事件状态机（详见设计文档）。
-- 🤖 既能当**命令行工具**用，也能装成 **Claude Code 插件**（开 Claude Code 自动报 ddl，对话即可下课件 / 查作业）。
+---
 
-## 功能
+## ✨ 能帮你做什么
 
-| 能力 | 说明 |
+- 🔔 **自动发现**新作业、**作业改期**、新公告、**出分**、新课件——不再靠刷 BB。
+- 📋 **任务清单**：未完成作业按截止排序，逾期标红、临近标橙，可勾选完成（网页 + 命令行）。
+- ⬇️ **一键下课件**：按"课程/文件夹"结构增量镜像，往年卷自动归到 `_exams/`。
+- 💬 **对话式**：直接跟 Claude 说"我有什么作业 / 扫一下 / 下 MAT3007 的课件"。
+- 🌗 **日夜双主题**看板，跟随系统、记住选择。
+- 🔒 密码只存你本机钥匙串，只读你自己的账号。
+
+---
+
+## 🚀 安装（最省事：让 AI 帮你装）
+
+打开 Claude Code，在对话框发**一句话**：
+
+> 帮我安装这个 Claude Code 插件：`https://github.com/jsyzlbw/bbwatch`
+> 我的账号是 `你的学号@link.cuhk.edu.cn`，密码是 `你的密码`
+
+AI 会自动建环境、装好、把密码存进你本机钥匙串。**新开一个 Claude Code 会话**即可使用。
+
+> 前提：已装 **Claude Code** 和 **Python ≥ 3.11**（macOS / Linux）。
+> 想手动安装 / 排障 / 给同学发说明，见 **[INSTALL.md](INSTALL.md)**。
+
+---
+
+## 💬 怎么用：直接跟 Claude 说话
+
+装好后**新开会话**，像聊天一样用（举几个例子）：
+
+**① 查作业 / 看 ddl**
+> **你：** 我还有什么作业？
+> **bbwatch：** 📋 2 项未完成
+> · Homework 4（MAT3007）07-01 23:59 — 还剩 2 天
+> · Mock Quiz（DDA2001）— 已逾期 5 天
+
+**② 扫一下有没有新东西**
+> **你：** 扫一下，有没有新作业或者出分了
+> **bbwatch：** 扫描完成（17 门课，约 40 秒）。发现：
+> · 🆕 新作业 CSC3001《Assignment 3》，截止 07-05
+> · ✅ MAT3007《Homework 2》出分了
+
+**③ 下载某门课的课件**
+> **你：** 把 MAT3350 的课件都下下来
+> **bbwatch：** 已下载 13 个文件到 `~/Downloads/bbwatch/MAT3350:Information_Theory/`（讲义 ch1–12、作业、往年卷已归入 `_exams/`）。
+
+**④ 标记完成 / 撤销**
+> **你：** 第 1 个我做完了
+> **bbwatch：** 已把 Homework 4（MAT3007）标记为已完成 ✓
+
+> 也支持斜杠命令：`/bb-scan`、`/bb-tasks`、`/bb-download`、`/bb-setup`。
+
+---
+
+## 📋 任务看板（网页）
+
+让 Claude 运行、或自己在终端跑：
+
+```bash
+bbwatch dashboard
+```
+
+浏览器打开 **http://127.0.0.1:8765/**：按截止排序、逾期/紧急高亮、点复选框勾选完成、右上角 **☀ / 🌙 切换日间/夜间**、"立即扫描"按钮。（只绑本机，别人访问不到。）
+
+---
+
+## 🔔 开 Claude Code 就自动提醒
+
+插件的 SessionStart 钩子：**每天打开 Claude Code**，开头就会自动告诉你最近的 ddl 和新变化，并在后台静默刷新（超过 2 小时才扫，不卡你）。
+
+---
+
+## ⌨️ 命令行（不想说话也行）
+
+| 命令 | 作用 |
 |---|---|
-| 新作业 + 截止提醒 | 老师新建作业(成绩册栏目)即检测，含 ddl |
-| 作业**改期**提醒 | 老师改 `due` 时间也能发现 |
-| 新公告提醒 | 含考试 / 补课 / 座位 / 改期等关键词的公告标 **[重要]** |
-| 出分提醒 | 作业出分时通知 |
-| 新课件上传提醒 | 老师传新 slides / 讲义即检测 |
-| 任务清单 | 命令行 `tasks` 或浏览器网页，按 ddl 排序、逾期/紧急高亮 |
-| 手动勾选完成 / 撤销 | 纸质 / 线下作业自己标记，扫描不会覆盖 |
-| 课件增量镜像下载 | 按 课程/文件夹 结构下载，重跑只下新增/更新；往年卷自动归集到 `_exams/` |
-| 本地课件检索 | `find <关键词>`，不联网 |
-| macOS 桌面通知 | 新事件弹通知（失败退避重投、去重） |
-| 会话缓存 + 熔断 | 复用登录会话省时；连续失败熔断防账号锁 |
+| `bbwatch setup` | 录入学校账号密码（存钥匙串） |
+| `bbwatch scan` | 扫描 BB，检测新变化并桌面通知 |
+| `bbwatch tasks` | 列出可跟踪作业（编号 + ○/✓） |
+| `bbwatch done N` / `undone N` | 标记第 N 项 完成 / 未完成 |
+| `bbwatch courses` | 列出在读课程 |
+| `bbwatch download MAT3007` | 下载某门课全部课件 |
+| `bbwatch find slides` | 在已下载课件里检索（不联网） |
+| `bbwatch dashboard` | 打开网页任务看板 |
+| `bbwatch doctor` | 自检（凭据/会话/数据库/端口） |
+| `bbwatch uninstall` | 清除凭据/会话（可 `--purge-db`） |
 
-## 安装
+---
 
-环境：macOS、Python ≥ 3.11。
+## 🔒 隐私与安全
 
-```bash
-git clone <repo> bbwatch && cd bbwatch
-python3 -m venv .venv
-.venv/bin/pip install -e .
-.venv/bin/bbwatch setup        # 终端输入 学号@link.cuhk.edu.cn 与密码(存入钥匙串)
-.venv/bin/bbwatch doctor       # 自检
-```
+- 密码**只存你本机 macOS 钥匙串**，绝不上传、不进日志、不进仓库。
+- 只读**你自己**的账号数据；除下载课件外只发只读请求；**从不访问花名册等含他人信息的接口**。
+- 任务、下载的课件都只在你本机。
+- 下载的课件仅供个人学习，请勿二次分发。
 
-## 使用（命令行）
+---
+
+## 🧰 给开发者
 
 ```bash
-bbwatch scan              # 扫描 BB，检测新作业/改期/公告/出分/新课件并桌面通知
-bbwatch tasks             # 列出可跟踪作业(编号 + ○/✓)
-bbwatch done 2            # 把第 2 项标记完成 ；undone 2 撤销
-bbwatch dashboard         # 浏览器打开任务清单(可勾选)
-bbwatch courses           # 列出在读课程
-bbwatch download MAT3007  # 增量镜像某课全部课件(默认到 ~/Downloads/bbwatch)
-bbwatch find slides       # 在已下载课件里检索
-bbwatch config            # 查看/生成配置
-bbwatch uninstall         # 清除凭据/会话(可选 --purge-db)
+git clone https://github.com/jsyzlbw/bbwatch && cd bbwatch
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+.venv/bin/pytest -q          # 全套测试
 ```
 
-## 使用（Claude Code 插件）
+引擎为纯 Python（`src/bbwatch/`），核心机制：用稳定 id 与本地 SQLite 全量 diff 保证**绝不漏**、稳定 id + 去重保证**绝不重复**；并行抓取提速。详尽设计与对抗式审计文档在 [`docs/superpowers/`](docs/superpowers/)。
 
-**给同学最省事**：在 Claude Code 里对 AI 说一句话即可全自动安装+配置：
+---
 
-> 帮我安装这个 Claude Code 插件：`https://github.com/<OWNER>/bbwatch`，我的账号是 `125xxxxxx@link.cuhk.edu.cn`，密码是 `xxxx`
+## 🗺️ 路线图
 
-完整安装/分发说明见 **[INSTALL.md](INSTALL.md)**（AI 一键安装、手动安装、开发者分发、Windows 说明）。底层走 `claude plugin install` + Setup 钩子自举（在持久目录建 venv 装引擎），凭据非交互写入本机钥匙串。
+- ✅ 已做：作业/改期/公告/出分/新课件 监控、任务清单（网页+CLI）、增量下载、往年卷归集、本地检索、会话缓存与熔断、并行扫描、日夜主题。
+- ⏳ 待做：邮件 / Telegram 通知渠道、Windows 原生支持（暂可用 WSL）。
 
-装好后：
+---
 
-- **开 Claude Code 即自动**：SessionStart 钩子注入待办摘要（最近 ddl、新变化、临近未扫提示），并在后台静默刷新扫描。
-- **对话驱动（MCP 工具）**：直接说"扫一下有没有新作业"、"把 MAT3350 的课件下下来"、"我还有哪些 ddl"、"第 3 个做完了"。
-- **斜杠命令**：`/bb-scan` `/bb-tasks` `/bb-download` `/bb-setup`。
+## 工作原理（一句话）
 
-## 配置
-
-首次 `bbwatch config` 生成 `~/.bbwatch/config.toml`：
-
-```toml
-[scan]
-include = []            # 课程代码白名单子串(空=全部在读)
-exclude = ["PED"]       # 黑名单(如体育)
-archive_overdue_weeks = 4   # 逾期超 N 周的未完成作业自动归档隐藏
-
-[download]
-dest = "~/Downloads/bbwatch"
-
-[dashboard]
-port = 8765
-```
-
-## 工作原理（简）
-
-```
-engine/ (Python 引擎)                         plugin (Claude Code 外壳)
-  auth      ADFS OAuth2 登录(无 MFA)            hooks/SessionStart  开工自动扫+摘要注入
-  bbclient  /learn/api/public REST + 分页        commands/           斜杠命令
-  store     SQLite 全量 diff + 事件状态机          .mcp.json           MCP 服务器(对话式)
-  scanner   编排 + 冷启动静默 + 维度隔离           skills/bb-assistant
-  downloader 增量镜像
-  notifier  macOS 桌面通知
-```
-
-全校统一 AD FS 认证，登录后用会话 cookie 调官方 REST API。"绝不漏"靠**与本地已知集合全量 diff**（非时间窗增量，多天没扫也能补齐），"绝不重复"靠**稳定 id + 事件同事务落库 + UNIQUE 去重**。详见 [`docs/superpowers/specs/`](docs/superpowers/specs/) 的设计文档与对抗式审计。
-
-## 开发
-
-```bash
-.venv/bin/pytest -q          # 98 测试
-.venv/bin/ruff check src tests
-```
-
-设计与计划文档在 `docs/superpowers/`（概要设计、极其详细设计 + 鲁棒性审计、各里程碑实现计划）。
-
-## 状态 / 路线图
-
-- ✅ 监控（作业/改期/公告/出分/新课件）、任务清单（CLI+网页）、手动完成、增量下载、Claude Code 插件（MCP+SessionStart）、会话缓存、运维、往年卷归集/本地检索/积压提醒
-- ⏳ 待做：**邮件 / Telegram 通知渠道**（已留可插拔扩展点）
-
-## 安全与隐私
-
-- 密码仅存 macOS 钥匙串；会话 cookie 0600 权限存本机；日志对密码/cookie/OAuth code/学号脱敏。
-- 仅访问你自己的账号数据；除课件下载外只发 GET。
-- 仅供个人学习使用；下载的课件请勿二次分发。
+全校统一 AD FS 登录 → 用会话 cookie 调 Blackboard 官方 REST API → SQLite 全量 diff 检出变化 → 桌面通知 + 任务清单。是"用你自己的账号、读你自己的数据"，合理合规。

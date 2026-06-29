@@ -136,7 +136,7 @@ dashboard  （本地清单服务，绑 127.0.0.1）
 | 用途 | 方法/路径 | 备注 |
 |---|---|---|
 | 登录入口 | `GET https://sts.cuhk.edu.cn/adfs/oauth2/authorize?response_type=code&client_id=4b71b947-7b0d-4611-b47e-0ec37aabfd5e&redirect_uri=https://bb.cuhk.edu.cn/webapps/bb-SSOIntegrationOAuth2-BBLEARN/authValidate/getCode` | 返回 ADFS 表单(`UserName/Password/Kmsi`)；POST 后 302 回 BB `getCode` 写会话 |
-| 当前用户 | `GET /learn/api/public/v1/users/me` | 取 `id`（形如 `_49765_1`） |
+| 当前用户 | `GET /learn/api/public/v1/users/me` | 取 `id`（形如 `_10000_1`） |
 | 学期表 | `GET /learn/api/public/v1/terms?limit=100` | `termId → name`（如 `2550UG`） |
 | 我的课程 | `GET /learn/api/public/v1/users/{uid}/courses?expand=course&limit=100` | `limit≤100` 需分页；含 `courseRoleId/availability/termId/ultraStatus` |
 | 日历(全课程 ddl) | `GET /learn/api/public/v1/calendars/items?since=...&until=...&limit=50` | 窗口 **≤16 周**；返回 `GradebookColumn` 类带 `end`(=ddl) |

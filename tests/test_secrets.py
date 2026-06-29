@@ -27,7 +27,7 @@ def setup_function():
 
 
 def test_store_and_load():
-    secrets.store_credentials("125090374@link.cuhk.edu.cn", "pw")
+    secrets.store_credentials("120000000@link.cuhk.edu.cn", "pw")
     c = secrets.load_credentials()
     assert c.username.endswith("@link.cuhk.edu.cn")
     assert c.password == "pw"

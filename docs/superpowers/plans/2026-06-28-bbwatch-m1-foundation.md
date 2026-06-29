@@ -208,11 +208,11 @@ git commit -m "feat(m1): 配置与路径(0700 目录)"
 from bbwatch.logging_setup import redact
 
 def test_redacts_password_query():
-    s = "POST .../authorize?code=abc123&UserName=125090374&Password=secret"
+    s = "POST .../authorize?code=abc123&UserName=120000000&Password=secret"
     out = redact(s)
     assert "secret" not in out
     assert "abc123" not in out
-    assert "125090374" not in out
+    assert "120000000" not in out
 
 def test_redacts_cookie_and_token():
     s = "Cookie: JSESSIONID=ZZZ; s_session_id=YYY  Authorization: Bearer tok"
@@ -319,7 +319,7 @@ def setup_function():
     keyring.set_keyring(MemKeyring())
 
 def test_store_and_load():
-    secrets.store_credentials("125090374@link.cuhk.edu.cn", "pw")
+    secrets.store_credentials("120000000@link.cuhk.edu.cn", "pw")
     c = secrets.load_credentials()
     assert c.username.endswith("@link.cuhk.edu.cn")
     assert c.password == "pw"
@@ -684,20 +684,20 @@ git commit -m "feat(m1): ADFS OAuth2 登录(表单解析+流程)"
 
 `tests/fixtures/users_me.json`:
 ```json
-{"id":"_49765_1","userName":"125090374","name":{"given":"梁博文"}}
+{"id":"_10000_1","userName":"120000000","name":{"given":"示例同学"}}
 ```
 `tests/fixtures/courses_p1.json`（含 `paging.nextPage`，验证翻页）:
 ```json
 {"results":[
-  {"id":"_m1_1","userId":"_49765_1","courseId":"_17236_1","courseRoleId":"Student",
+  {"id":"_m1_1","userId":"_10000_1","courseId":"_17236_1","courseRoleId":"Student",
    "course":{"id":"_17236_1","courseId":"MAT3007:Optimization_L01","name":"MAT3007:Optimization_L01",
    "termId":"_424_1","ultraStatus":"Classic","availability":{"available":"Yes"}}}
-],"paging":{"nextPage":"/learn/api/public/v1/users/_49765_1/courses?expand=course&limit=1&offset=1"}}
+],"paging":{"nextPage":"/learn/api/public/v1/users/_10000_1/courses?expand=course&limit=1&offset=1"}}
 ```
 `tests/fixtures/courses_p2.json`（末页，无 paging）:
 ```json
 {"results":[
-  {"id":"_m2_1","userId":"_49765_1","courseId":"_9_1","courseRoleId":"Student",
+  {"id":"_m2_1","userId":"_10000_1","courseId":"_9_1","courseRoleId":"Student",
    "course":{"id":"_9_1","courseId":"PED1201:Badminton","name":"PED1201:Badminton",
    "termId":"_424_1","ultraStatus":"Classic","availability":{"available":"No"}}}
 ]}
@@ -718,14 +718,14 @@ def _resp(name):
 def test_get_me():
     t = FakeTransport({("GET", BB + "/learn/api/public/v1/users/me"): _resp("users_me.json")})
     me = BbClient(t).get_me()
-    assert me.id == "_49765_1" and me.given_name == "梁博文"
+    assert me.id == "_10000_1" and me.given_name == "示例同学"
 
 def test_list_courses_follows_pagination():
-    base = BB + "/learn/api/public/v1/users/_49765_1/courses?expand=course&limit=100"
-    nxt = BB + "/learn/api/public/v1/users/_49765_1/courses?expand=course&limit=1&offset=1"
+    base = BB + "/learn/api/public/v1/users/_10000_1/courses?expand=course&limit=100"
+    nxt = BB + "/learn/api/public/v1/users/_10000_1/courses?expand=course&limit=1&offset=1"
     t = FakeTransport({("GET", base): _resp("courses_p1.json"),
                        ("GET", nxt): _resp("courses_p2.json")})
-    courses = BbClient(t).list_courses("_49765_1")
+    courses = BbClient(t).list_courses("_10000_1")
     assert len(courses) == 2
     assert {c.course_id for c in courses} == {"MAT3007:Optimization_L01", "PED1201:Badminton"}
     active = [c for c in courses if c.is_active]
@@ -841,8 +841,8 @@ def _r(name): return Response(200, {"Content-Type":"application/json"}, (FIX/nam
 
 def test_run_whoami_composes_summary(monkeypatch):
     # 不真正登录：login 注入为 no-op；transport 提供 me + courses
-    base = BB + "/learn/api/public/v1/users/_49765_1/courses?expand=course&limit=100"
-    nxt = BB + "/learn/api/public/v1/users/_49765_1/courses?expand=course&limit=1&offset=1"
+    base = BB + "/learn/api/public/v1/users/_10000_1/courses?expand=course&limit=100"
+    nxt = BB + "/learn/api/public/v1/users/_10000_1/courses?expand=course&limit=1&offset=1"
     t = FakeTransport({
         ("GET", BB + "/learn/api/public/v1/users/me"): _r("users_me.json"),
         ("GET", base): _r("courses_p1.json"),
@@ -850,8 +850,8 @@ def test_run_whoami_composes_summary(monkeypatch):
     })
     summary = run_whoami(transport=t, creds=Credentials("u@link.cuhk.edu.cn","pw"),
                          login_fn=lambda tr, c: None)
-    assert "梁博文" in summary
-    assert "_49765_1" in summary
+    assert "示例同学" in summary
+    assert "_10000_1" in summary
     assert "在读 1" in summary    # 2 门里 1 门在读
 ```
 
@@ -938,7 +938,7 @@ Run: `.venv/bin/bbwatch setup`（按提示输入 学号@link.cuhk.edu.cn 与密�
 - [ ] **Step 2: 真实登录并打印**
 
 Run: `.venv/bin/bbwatch whoami`
-Expected: 输出 `已登录：梁博文（uid=_49765_1）` 与 `课程：共 19 门，在读 17 门`（数字以实际为准）。
+Expected: 输出 `已登录：示例同学（uid=_10000_1）` 与 `课程：共 19 门，在读 17 门`（数字以实际为准）。
 
 - [ ] **Step 3: 确认日志无敏感信息**
 

@@ -13,8 +13,8 @@ def _r(name):
 
 
 def test_run_whoami_composes_summary():
-    base = BB + "/learn/api/public/v1/users/_49765_1/courses?expand=course&limit=100"
-    nxt = BB + "/learn/api/public/v1/users/_49765_1/courses?expand=course&limit=1&offset=1"
+    base = BB + "/learn/api/public/v1/users/_10000_1/courses?expand=course&limit=100"
+    nxt = BB + "/learn/api/public/v1/users/_10000_1/courses?expand=course&limit=1&offset=1"
     t = FakeTransport(
         {
             ("GET", BB + "/learn/api/public/v1/users/me"): _r("users_me.json"),
@@ -27,6 +27,6 @@ def test_run_whoami_composes_summary():
         creds=Credentials("u@link.cuhk.edu.cn", "pw"),
         login_fn=lambda tr, c: None,
     )
-    assert "梁博文" in summary
-    assert "_49765_1" in summary
+    assert "示例同学" in summary
+    assert "_10000_1" in summary
     assert "在读 1" in summary
