@@ -137,9 +137,28 @@ def run_download(client, store, course, dest, *, now: str) -> str:
     return "\n".join(lines)
 
 
-def cmd_setup(_args) -> int:
-    username = input("学校账号(形如 学号@link.cuhk.edu.cn): ").strip()
-    password = getpass.getpass("密码（输入不回显）: ")
+def resolve_setup_credentials(env: dict, stdin_text: str | None = None):
+    """非交互获取凭据：优先环境变量 BBWATCH_USERNAME/PASSWORD，其次 stdin 两行。
+    都没有则返回 (None, None)，由调用方回退到交互式。"""
+    u = env.get("BBWATCH_USERNAME")
+    p = env.get("BBWATCH_PASSWORD")
+    if u and p:
+        return u, p
+    if stdin_text:
+        lines = [ln.strip() for ln in stdin_text.splitlines() if ln.strip()]
+        if len(lines) >= 2:
+            return lines[0], lines[1]
+    return None, None
+
+
+def cmd_setup(args) -> int:
+    import os
+
+    stdin_text = sys.stdin.read() if getattr(args, "stdin", False) else None
+    username, password = resolve_setup_credentials(os.environ, stdin_text)
+    if not (username and password):
+        username = input("学校账号(形如 学号@link.cuhk.edu.cn): ").strip()
+        password = getpass.getpass("密码（输入不回显）: ")
     store_credentials(username, password)
     print("已存入 macOS 钥匙串。可运行 bbwatch whoami 验证。")
     return 0
@@ -277,7 +296,9 @@ def cmd_undone(args) -> int:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="bbwatch")
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("setup", help="录入并保存学校账号密码到钥匙串").set_defaults(fn=cmd_setup)
+    p_setup = sub.add_parser("setup", help="录入并保存学校账号密码到钥匙串")
+    p_setup.add_argument("--stdin", action="store_true", help="从 stdin 读两行(账号/密码)，非交互")
+    p_setup.set_defaults(fn=cmd_setup)
     sub.add_parser("whoami", help="登录并打印身份与课程数").set_defaults(fn=cmd_whoami)
     sub.add_parser("scan", help="扫描 BB，检测新作业/改期/公告/出分并通知").set_defaults(fn=cmd_scan)
     sub.add_parser("tasks", help="列出可跟踪作业(编号 + ○/✓)").set_defaults(fn=cmd_tasks)
