@@ -13,7 +13,9 @@ if [ ! -x "$VENV/bin/python" ]; then
   python3 -m venv "$VENV"
 fi
 "$VENV/bin/pip" install -q --upgrade pip >/dev/null 2>&1 || true
-"$VENV/bin/pip" install -q "$ROOT"
+"$VENV/bin/pip" install -q "$ROOT"                                  # 首次装依赖+引擎
+# 同版本号更新时 pip 会跳过，故强制刷新引擎代码(仅包本身，不重装依赖)
+"$VENV/bin/pip" install -q --no-deps --force-reinstall "$ROOT"
 
 # 可选：随安装一并配置凭据(同学的 AI 可在 --init-only 前导出这两个变量)
 if [ -n "$BBWATCH_USERNAME" ] && [ -n "$BBWATCH_PASSWORD" ]; then
