@@ -1,0 +1,7 @@
+{"results":[
+  {"id":"_c_total","name":"Weighted Total","grading":{}},
+  {"id":"_c_hw1","name":"Homework 1","grading":{"due":"2026-06-09T15:59:00.000Z"},
+   "contentId":"_638150_1","score":{"possible":100}},
+  {"id":"_c_hw4","name":"Homework 4","grading":{"due":"2026-06-30T15:59:00.000Z"},
+   "contentId":"_639050_1","score":{"possible":100}}
+]}

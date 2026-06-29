@@ -1,0 +1,11 @@
+{
+  "name": "bill-plugins",
+  "owner": { "name": "Bill" },
+  "plugins": [
+    {
+      "name": "bbwatch",
+      "source": "./",
+      "description": "CUHK-SZ Blackboard 作业监控与课件批量下载"
+    }
+  ]
+}

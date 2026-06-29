@@ -1,0 +1,33 @@
+[project]
+name = "bbwatch"
+version = "0.1.0"
+description = "CUHK-SZ Blackboard 任务监控与课件下载 (Claude Code 插件引擎)"
+requires-python = ">=3.11"
+dependencies = [
+    "curl_cffi>=0.7",
+    "beautifulsoup4>=4.12",
+    "keyring>=24",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[project.scripts]
+bbwatch = "bbwatch.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+bbwatch = ["store/*.sql"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100

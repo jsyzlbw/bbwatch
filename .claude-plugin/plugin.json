@@ -1,0 +1,7 @@
+{
+  "name": "bbwatch",
+  "description": "CUHK-SZ Blackboard 作业监控与课件批量下载：自动发现新作业/改期/公告/出分，本地任务清单，一键增量下课件。",
+  "version": "0.1.0",
+  "author": { "name": "Bill" },
+  "keywords": ["cuhksz", "blackboard", "homework", "deadline", "course-materials"]
+}
