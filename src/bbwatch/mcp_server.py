@@ -1,177 +1,99 @@
-"""最小 MCP 服务器（stdio, 换行分隔 JSON-RPC 2.0）。把 bbwatch 能力暴露给 Claude Code：
-list_tasks / mark_task_done / scan_now / list_courses / download_course。
-
-工厂可注入便于离线测试；默认工厂在真实使用时按需登录/建库。
+"""bbwatch MCP 服务器（官方 FastMCP 实现，保证协议合规）。
+把能力暴露给 Claude Code 对话式调用：用户说一句话 → Claude 调对应工具。
+工具逻辑复用 cli 中已测过的 run_* 函数；store 走 AppPaths(尊重 BBWATCH_HOME)。
 """
 from __future__ import annotations
 
-import json
-import sys
+from mcp.server.fastmcp import FastMCP
 
-from . import __version__
-
-_TOOLS = [
-    {
-        "name": "list_tasks",
-        "description": "列出可跟踪的作业(带编号与完成状态○/✓)。先看这个再用 mark_task_done。",
-        "inputSchema": {"type": "object", "properties": {}},
-    },
-    {
-        "name": "mark_task_done",
-        "description": "把 list_tasks 中第 n 项标记为完成(done=true)或未完成(done=false)。",
-        "inputSchema": {
-            "type": "object",
-            "properties": {"n": {"type": "integer"}, "done": {"type": "boolean"}},
-            "required": ["n", "done"],
-        },
-    },
-    {
-        "name": "scan_now",
-        "description": "立即扫描 BB，检测新作业/改期/公告/出分/新课件并推送，返回摘要。",
-        "inputSchema": {"type": "object", "properties": {}},
-    },
-    {
-        "name": "list_courses",
-        "description": "列出本学期在读课程(带编号)。",
-        "inputSchema": {"type": "object", "properties": {}},
-    },
-    {
-        "name": "download_course",
-        "description": "增量镜像某课程的全部课件到本地。ref=课程编号或代码子串；dest 可选下载目录。",
-        "inputSchema": {
-            "type": "object",
-            "properties": {"ref": {"type": "string"}, "dest": {"type": "string"}},
-            "required": ["ref"],
-        },
-    },
-]
+mcp = FastMCP("bbwatch")
 
 
-class BbwatchServer:
-    def __init__(self, store_factory=None, login_client=None, notifier_factory=None, now_fn=None):
-        self._store_factory = store_factory or _default_store
-        self._login_client = login_client or _default_client
-        self._notifier_factory = notifier_factory or _default_notifier
-        self._now = now_fn or _default_now
-
-    def tool_specs(self):
-        return _TOOLS
-
-    def call_tool(self, name: str, args: dict) -> str:
-        # 局部导入避免循环依赖
-        from .cli import (
-            format_courses,
-            format_tasks,
-            pick_course,
-            run_download,
-            run_mark_done,
-            run_scan,
-        )
-
-        store = self._store_factory()
-        if name == "list_tasks":
-            return format_tasks(store.actionable_tasks(), self._now())
-        if name == "mark_task_done":
-            return run_mark_done(store, int(args["n"]), bool(args["done"]), self._now())
-        if name == "scan_now":
-            client = self._login_client()
-            return run_scan(client, store, self._notifier_factory(), now=self._now())
-        if name == "list_courses":
-            client = self._login_client()
-            me = client.get_me()
-            return format_courses([c for c in client.list_courses(me.id) if c.is_active])
-        if name == "download_course":
-            from .cli import DEFAULT_DEST
-
-            client = self._login_client()
-            me = client.get_me()
-            active = [c for c in client.list_courses(me.id) if c.is_active]
-            course = pick_course(active, args["ref"])
-            dest = args.get("dest") or str(DEFAULT_DEST)
-            return run_download(client, store, course, dest, now=self._now())
-        raise ValueError(f"未知工具: {name}")
-
-    def dispatch(self, msg: dict) -> dict | None:
-        mid = msg.get("id")
-        method = msg.get("method")
-        params = msg.get("params") or {}
-        if method == "initialize":
-            return _ok(mid, {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {"tools": {}},
-                "serverInfo": {"name": "bbwatch", "version": __version__},
-            })
-        if method == "notifications/initialized":
-            return None
-        if method == "tools/list":
-            return _ok(mid, {"tools": self.tool_specs()})
-        if method == "tools/call":
-            name = params.get("name")
-            args = params.get("arguments") or {}
-            try:
-                text = self.call_tool(name, args)
-                return _ok(mid, {"content": [{"type": "text", "text": text}]})
-            except Exception as e:  # noqa: BLE001  工具错误回传为内容而非协议错误
-                return _ok(mid, {
-                    "content": [{"type": "text", "text": f"错误：{e}"}],
-                    "isError": True,
-                })
-        if mid is not None:
-            return _err(mid, -32601, f"method not found: {method}")
-        return None
-
-
-def _ok(mid, result):
-    return {"jsonrpc": "2.0", "id": mid, "result": result}
-
-
-def _err(mid, code, message):
-    return {"jsonrpc": "2.0", "id": mid, "error": {"code": code, "message": message}}
-
-
-def _default_store():
+def _store():
     from .config import AppPaths
     from .store import Store
 
-    paths = AppPaths()
-    paths.ensure_dirs()
-    return Store(paths.db_path)
+    p = AppPaths()
+    p.ensure_dirs()
+    return Store(p.db_path)
 
 
-def _default_client():
-    from .cli import _authed  # 复用会话缓存登录
-
-    return _authed()[0]
-
-
-def _default_notifier():
-    from .notifier import MacNotifier
-
-    return MacNotifier()
-
-
-def _default_now():
+def _now() -> str:
     from .store import now_utc
 
     return now_utc()
 
 
-def main() -> int:
-    server = BbwatchServer()
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            msg = json.loads(line)
-        except ValueError:
-            continue
-        resp = server.dispatch(msg)
-        if resp is not None:
-            sys.stdout.write(json.dumps(resp, ensure_ascii=False) + "\n")
-            sys.stdout.flush()
-    return 0
+def _authed():
+    from .cli import _authed as authed
+
+    return authed()
+
+
+@mcp.tool()
+def list_tasks() -> str:
+    """列出未完成/可跟踪的作业(带编号与完成状态 ○/✓，按截止排序)。
+    用户问"我有什么作业/ddl/待办"时调用。"""
+    from .cli import format_tasks
+
+    return format_tasks(_store().actionable_tasks(), _now())
+
+
+@mcp.tool()
+def mark_task_done(n: int, done: bool) -> str:
+    """把 list_tasks 中第 n 项标记为完成(done=true)或未完成(done=false)。"""
+    from .cli import run_mark_done
+
+    return run_mark_done(_store(), n, done, _now())
+
+
+@mcp.tool()
+def scan_now() -> str:
+    """立即扫描 BB，检测新作业/改期/公告/出分/新课件并推送通知，返回摘要。
+    用户说"扫一下/有没有新东西/出分了吗"时调用。"""
+    from .cli import run_scan
+    from .config import load_config, make_course_filter
+    from .notifier import MacNotifier
+
+    client, store, paths = _authed()
+    cfg = load_config(paths.config_path)
+    return run_scan(
+        client, store, MacNotifier(), now=_now(),
+        course_filter=make_course_filter(cfg), archive_weeks=cfg.archive_overdue_weeks,
+    )
+
+
+@mcp.tool()
+def list_courses() -> str:
+    """列出本学期在读课程(带编号)。"""
+    from .cli import format_courses
+
+    client, _store_unused, _paths = _authed()
+    me = client.get_me()
+    return format_courses([c for c in client.list_courses(me.id) if c.is_active])
+
+
+@mcp.tool()
+def download_course(ref: str, dest: str = "") -> str:
+    """增量镜像某课程的全部课件到本地。
+    ref=课程编号(见 list_courses)或课程代码子串(如 MAT3007)；dest 可选下载目录。"""
+    from pathlib import Path
+
+    from .cli import pick_course, run_download
+    from .config import load_config
+
+    client, store, paths = _authed()
+    me = client.get_me()
+    active = [c for c in client.list_courses(me.id) if c.is_active]
+    course = pick_course(active, ref)
+    cfg = load_config(paths.config_path)
+    d = Path(dest) if dest else Path(cfg.download_dest).expanduser()
+    return run_download(client, store, course, d, now=_now())
+
+
+def main() -> None:
+    mcp.run()  # 默认 stdio 传输
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()
