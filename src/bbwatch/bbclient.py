@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from urllib.parse import urljoin
 
+from collections.abc import Iterator
+
 from .errors import TransportError
-from .models import Announcement, Column, ColumnStatus, Course, Me
+from .models import Announcement, Attachment, Column, ColumnStatus, Content, Course, Me
 from .transport import Transport
 
 BB = "https://bb.cuhk.edu.cn"
@@ -84,6 +86,54 @@ class BbClient:
             raise TransportError(f"GET column status {colid} -> {r.status}")
         j = r.json() or {}
         return ColumnStatus(status=j.get("status") or "None", score=j.get("score"))
+
+    def _to_content(self, c: dict) -> Content:
+        return Content(
+            id=c["id"],
+            title=c.get("title") or "",
+            handler=(c.get("contentHandler") or {}).get("id"),
+            has_children=bool(c.get("hasChildren")),
+            created=c.get("created"),
+            modified=c.get("modified"),
+        )
+
+    def list_contents(self, cid: str) -> list[Content]:
+        rows = self._paginate(f"{API}/courses/{cid}/contents?limit=100")
+        return [self._to_content(c) for c in rows]
+
+    def list_content_children(self, cid: str, content_id: str) -> list[Content]:
+        rows = self._paginate(f"{API}/courses/{cid}/contents/{content_id}/children?limit=100")
+        return [self._to_content(c) for c in rows]
+
+    def walk_contents(self, cid: str, max_depth: int = 12) -> Iterator[tuple[list[str], Content]]:
+        """递归整棵内容树，产出 (祖先文件夹标题列表, Content)。带深度/环守卫。"""
+        seen: set[str] = set()
+
+        def rec(items: list[Content], ancestors: list[str], depth: int):
+            if depth > max_depth:
+                return
+            for c in items:
+                if c.id in seen:
+                    continue
+                seen.add(c.id)
+                yield ancestors, c
+                if c.has_children:
+                    children = self.list_content_children(cid, c.id)
+                    yield from rec(children, ancestors + [c.title], depth + 1)
+
+        yield from rec(self.list_contents(cid), [], 0)
+
+    def list_attachments(self, cid: str, content_id: str) -> list[Attachment]:
+        rows = self._paginate(f"{API}/courses/{cid}/contents/{content_id}/attachments?limit=100")
+        return [
+            Attachment(id=a["id"], file_name=a.get("fileName") or a["id"],
+                       mime_type=a.get("mimeType"))
+            for a in rows
+        ]
+
+    def download_attachment(self, cid: str, content_id: str, att_id: str, path: str) -> int:
+        url = f"{BB}{API}/courses/{cid}/contents/{content_id}/attachments/{att_id}/download"
+        return self._t.download_to(url, path)
 
     def list_announcements(self, cid: str) -> list[Announcement]:
         rows = self._paginate(f"{API}/courses/{cid}/announcements?limit=100")

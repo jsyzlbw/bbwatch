@@ -62,3 +62,20 @@ class Announcement:
     title: str
     created: str  # 发布时间 UTC
     body: str = ""
+
+
+@dataclass(frozen=True)
+class Content:
+    id: str
+    title: str
+    handler: str | None  # contentHandler.id: x-bb-folder/-document/-file/-assignment
+    has_children: bool = False
+    created: str | None = None
+    modified: str | None = None
+
+
+@dataclass(frozen=True)
+class Attachment:
+    id: str
+    file_name: str
+    mime_type: str | None = None
