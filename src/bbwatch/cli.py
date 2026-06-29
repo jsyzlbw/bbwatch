@@ -172,6 +172,28 @@ def cmd_download(args) -> int:
     return 0
 
 
+def cmd_dashboard(args) -> int:
+    import webbrowser
+
+    from .dashboard import DashboardState, serve
+
+    paths = AppPaths()
+    paths.ensure_dirs()
+    state = DashboardState(store_factory=lambda: Store(paths.db_path), now_fn=now_utc)
+    httpd, port = serve(state, port=args.port or 8765)
+    url = f"http://127.0.0.1:{port}/"
+    print(f"任务清单：{url}（Ctrl-C 退出）")
+    try:
+        webbrowser.open(url)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\n已退出")
+    return 0
+
+
 def cmd_tasks(_args) -> int:
     paths = AppPaths()
     paths.ensure_dirs()
@@ -209,6 +231,9 @@ def main(argv=None) -> int:
     p_undone = sub.add_parser("undone", help="把 tasks 列表第 N 项改回未完成")
     p_undone.add_argument("n", type=int, help="bbwatch tasks 中的编号")
     p_undone.set_defaults(fn=cmd_undone)
+    p_dash = sub.add_parser("dashboard", help="启动本地任务清单网页(浏览器查看/勾选)")
+    p_dash.add_argument("--port", type=int, help="端口(默认 8765)")
+    p_dash.set_defaults(fn=cmd_dashboard)
     sub.add_parser("courses", help="列出在读课程(编号)").set_defaults(fn=cmd_courses)
     p_dl = sub.add_parser("download", help="增量镜像某课程的全部课件")
     p_dl.add_argument("ref", help="课程编号(见 bbwatch courses)或课程代码子串")
