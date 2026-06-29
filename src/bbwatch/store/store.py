@@ -250,6 +250,7 @@ class Store:
                 {
                     "entity_key": r["entity_key"],
                     "course_id": r["course_id"],
+                    "course": payload.get("course_code") or r["course_id"],  # 人类可读课程代码
                     "name": payload.get("name"),
                     "due_utc": r["due_utc"],
                     "done": bool(ov and ov["manual_done"]),

@@ -76,7 +76,10 @@ def _scan_columns(client, store, course, uid, scan_id, now, failures) -> int:
         return 0
     suppress = not store.baseline_established(cid, dim)
     known = store.known_entities(cid, "column")
-    changes = diff_columns(known, cols, statuses, cid=cid, scan_id=scan_id, suppress=suppress)
+    changes = diff_columns(
+        known, cols, statuses, cid=cid, scan_id=scan_id, suppress=suppress,
+        course_code=course.name or course.course_id,  # 课程名更友好(如 MAT3007:Optimization_L01)
+    )
     n = sum(store.apply_change(ch, now) for ch in changes)
     if suppress:  # 本维度完整成功（未抛错） → 建立基线
         store.establish_baseline(cid, dim, now)

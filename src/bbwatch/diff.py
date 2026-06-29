@@ -44,6 +44,7 @@ def diff_columns(
     cid: str,
     scan_id: int,
     suppress: bool,
+    course_code: str | None = None,
 ) -> list[Change]:
     changes: list[Change] = []
     for col in columns:
@@ -63,6 +64,7 @@ def diff_columns(
                 "name": col.name,
                 "content_id": col.content_id,
                 "score_possible": col.score_possible,
+                "course_code": course_code,
             },
             "scan_id": scan_id,
         }

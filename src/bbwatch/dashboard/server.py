@@ -38,7 +38,7 @@ async function load(){
     ds.textContent=local.toISOString().slice(5,16).replace('T',' ');
     if(!t.done){ if(dh<0)ds.className='due overdue'; else if(dh<=24)ds.className='due urgent'; }
     const nm=document.createElement('span'); nm.className='name';
-    nm.innerHTML='<b>'+escapeHtml(t.name||'')+'</b> <span class="course">'+escapeHtml(t.course_id||'')+'</span>';
+    nm.innerHTML='<b>'+escapeHtml(t.name||'')+'</b> <span class="course">'+escapeHtml(t.course||t.course_id||'')+'</span>';
     li.append(cb,ds,nm); ul.append(li);
   }
 }

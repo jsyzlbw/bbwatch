@@ -88,8 +88,9 @@ def format_tasks(tasks: list[dict], now: str) -> str:
         else:
             delta_h = (due - now_dt).total_seconds() / 3600
             tag = "[逾期] " if delta_h < 0 else ("[紧急] " if delta_h <= 24 else "")
+        course = t.get("course") or t["course_id"]
         lines.append(
-            f"[{i}] {mark} {tag}{local.strftime('%m-%d %H:%M')}  {t['name']}  ({t['course_id']})"
+            f"[{i}] {mark} {tag}{local.strftime('%m-%d %H:%M')}  {t['name']}  ({course})"
         )
     return "\n".join(lines)
 

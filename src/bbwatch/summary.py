@@ -26,8 +26,9 @@ def build_session_summary(store, now: str, *, top_n: int = 5, stale_hours: int =
                 tag = f"剩{int(dh)}h"
             else:
                 tag = "充裕"
+            course = t.get("course") or t["course_id"]
             lines.append(
-                f"  • {t['name']}（{t['course_id']}）{local.strftime('%m-%d %H:%M')} [{tag}]"
+                f"  • {t['name']}（{course}）{local.strftime('%m-%d %H:%M')} [{tag}]"
             )
 
     last = store.last_scan_time()
