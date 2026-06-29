@@ -7,17 +7,40 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+  // 早期设定主题，避免切换闪烁：本地记忆优先，否则跟随系统
+  (function(){try{
+    var t=localStorage.getItem('bbwatch-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');
+    document.documentElement.setAttribute('data-theme',t);
+  }catch(e){document.documentElement.setAttribute('data-theme','dark');}})();
+</script>
 <style>
   :root{
-    --ink:#0a0c10; --ink2:#0e1118;
+    --serif:"Instrument Serif",ui-serif,Georgia,serif;
+    --sans:"Hanken Grotesk",ui-sans-serif,system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  /* 夜晚(默认) */
+  :root, :root[data-theme="dark"]{
+    --ink:#0a0c10;
     --panel:rgba(255,255,255,.035); --panel-hi:rgba(255,255,255,.06);
     --line:rgba(255,255,255,.09); --line-hi:rgba(255,255,255,.16);
     --text:#ece9e3; --muted:#8b909c; --faint:#5b606c;
     --amber:#f6b24b; --coral:#ff6b5e; --rose:#ff4d6d; --gold:#e7c85a;
     --mint:#54e3a6; --teal:#39c0a8;
-    --serif:"Instrument Serif",ui-serif,Georgia,serif;
-    --sans:"Hanken Grotesk",ui-sans-serif,system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
-    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --glow1:rgba(246,178,75,.10); --glow2:rgba(57,192,168,.08); --glow3:rgba(255,107,94,.06);
+    --grain:.045; --toast-bg:#16191f; --shadow:0 12px 40px rgba(0,0,0,.5);
+  }
+  /* 白天(暖纸) */
+  :root[data-theme="light"]{
+    --ink:#f4f1ea;
+    --panel:rgba(28,24,16,.028); --panel-hi:rgba(28,24,16,.055);
+    --line:rgba(28,24,16,.11); --line-hi:rgba(28,24,16,.2);
+    --text:#221f18; --muted:#6c665b; --faint:#a39c8c;
+    --amber:#b67708; --coral:#d6453a; --rose:#cf3354; --gold:#a07614;
+    --mint:#129a63; --teal:#0e8f82;
+    --glow1:rgba(246,178,75,.22); --glow2:rgba(57,192,168,.13); --glow3:rgba(255,107,94,.10);
+    --grain:.03; --toast-bg:#ffffff; --shadow:0 14px 40px rgba(90,78,55,.16);
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
@@ -25,14 +48,15 @@
     font-family:var(--sans); color:var(--text); background:var(--ink);
     min-height:100vh; line-height:1.5; letter-spacing:.01em;
     background-image:
-      radial-gradient(1100px 600px at 12% -8%, rgba(246,178,75,.10), transparent 60%),
-      radial-gradient(900px 700px at 100% 8%, rgba(57,192,168,.08), transparent 55%),
-      radial-gradient(800px 800px at 50% 120%, rgba(255,107,94,.06), transparent 60%);
+      radial-gradient(1100px 600px at 12% -8%, var(--glow1), transparent 60%),
+      radial-gradient(900px 700px at 100% 8%, var(--glow2), transparent 55%),
+      radial-gradient(800px 800px at 50% 120%, var(--glow3), transparent 60%);
     background-attachment:fixed;
+    transition:background-color .4s ease, color .4s ease;
   }
   /* 颗粒质感 */
   body::before{
-    content:""; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.045;
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:var(--grain);
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
   .wrap{position:relative; z-index:1; max-width:760px; margin:0 auto; padding:38px 22px 80px}
@@ -53,6 +77,11 @@
   .scan .ic{width:13px;height:13px;display:inline-block}
   .scan.spin .ic{animation:spin 1s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
+  .controls{display:flex; align-items:center; gap:10px}
+  .icon-btn{width:38px;height:38px;border-radius:999px;background:var(--panel);border:1px solid var(--line);
+    color:var(--text);cursor:pointer;display:grid;place-items:center;transition:.25s;backdrop-filter:blur(8px)}
+  .icon-btn:hover{background:var(--panel-hi);border-color:var(--line-hi);transform:translateY(-1px) rotate(-8deg)}
+  .icon-btn svg{width:16px;height:16px}
 
   /* 主标题(editorial hero) */
   .hero{margin-bottom:40px; opacity:0; animation:rise .7s .05s cubic-bezier(.2,.7,.2,1) forwards}
@@ -127,7 +156,7 @@
   .stale.show{display:flex;animation:rise .5s forwards}
 
   @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
-  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:#16191f;border:1px solid var(--line-hi);color:var(--text);padding:11px 18px;border-radius:12px;font-size:13px;opacity:0;transition:.3s;z-index:9;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--toast-bg);border:1px solid var(--line-hi);color:var(--text);padding:11px 18px;border-radius:12px;font-size:13px;opacity:0;transition:.3s;z-index:9;box-shadow:var(--shadow)}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 </style>
 </head>
@@ -135,10 +164,13 @@
 <div class="wrap">
   <div class="top">
     <div class="brand"><span class="dot"></span><b>bbwatch</b><small>任务台</small></div>
-    <button class="scan" id="scanBtn" onclick="doScan()">
-      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v5h-5"/></svg>
-      <span id="scanTxt">扫描</span>
-    </button>
+    <div class="controls">
+      <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="切换日间 / 夜间" aria-label="切换主题"></button>
+      <button class="scan" id="scanBtn" onclick="doScan()">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v5h-5"/></svg>
+        <span id="scanTxt">扫描</span>
+      </button>
+    </div>
   </div>
 
   <div class="stale" id="stale"></div>
@@ -169,6 +201,14 @@ const esc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"
 function parseUTC(s){return new Date(String(s).replace('Z','+00:00').replace(/(\.\d+)?\+00:00$/,'+00:00'))}
 function hue(s){let h=0;for(const c of (s||''))h=(h*31+c.charCodeAt(0))>>>0;return Math.round((h*137.508)%360)}
 function courseShort(c){const m=String(c||'').match(/^[A-Z]{2,4}\d{3,4}[A-Z]?/);return m?m[0]:String(c||'').slice(0,8)}
+
+// 日夜主题
+const MOON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+const SUN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.2M12 19.8V22M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2 12h2.2M19.8 12H22M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/></svg>';
+function themeNow(){return document.documentElement.getAttribute('data-theme')||'dark'}
+function setThemeIcon(){const b=document.getElementById('themeBtn'); if(b)b.innerHTML=themeNow()==='dark'?SUN:MOON;}
+function toggleTheme(){const t=themeNow()==='dark'?'light':'dark'; try{localStorage.setItem('bbwatch-theme',t)}catch(e){} document.documentElement.setAttribute('data-theme',t); setThemeIcon();}
+setThemeIcon();
 
 async function load(){
   let d;
