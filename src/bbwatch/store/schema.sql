@@ -56,3 +56,15 @@ CREATE TABLE IF NOT EXISTS task_override (
     manual_done INTEGER NOT NULL DEFAULT 0,
     updated_at  TEXT
 );
+
+-- 课件镜像下载登记（增量判定）。att_key = att:{cid}:{contentid}:{attid}
+CREATE TABLE IF NOT EXISTS download (
+    att_key          TEXT PRIMARY KEY,
+    course_id        TEXT NOT NULL,
+    local_path       TEXT NOT NULL,
+    src_modified_utc TEXT,
+    size             INTEGER,
+    status           TEXT NOT NULL DEFAULT 'done',
+    updated_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_download_path ON download(local_path);

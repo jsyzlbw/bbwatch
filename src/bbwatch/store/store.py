@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 _SCHEMA = Path(__file__).parent / "schema.sql"
 
 
@@ -41,12 +41,24 @@ class Store:
         self._init_schema()
 
     def _init_schema(self) -> None:
+        # 所有建表为 CREATE IF NOT EXISTS，对新库与旧库均幂等（加表即迁移）。
         self._conn.executescript(_SCHEMA.read_text())
         row = self._conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
-        if row is None:
+        cur = int(row["value"]) if row else 0
+        if cur == 0:
             self._conn.execute(
                 "INSERT INTO meta(key, value) VALUES('schema_version', ?)", (str(SCHEMA_VERSION),)
             )
+        elif cur < SCHEMA_VERSION:
+            self._migrate(cur)
+            self._conn.execute(
+                "UPDATE meta SET value=? WHERE key='schema_version'", (str(SCHEMA_VERSION),)
+            )
+
+    def _migrate(self, from_version: int) -> None:
+        # 目前各版本变更均为新增表（executescript 已用 IF NOT EXISTS 处理）。
+        # 未来非新增式变更（ALTER/数据迁移）在此按 from_version 顺序补。
+        return
 
     def schema_version(self) -> int:
         row = self._conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
@@ -216,4 +228,38 @@ class Store:
             "ON CONFLICT(entity_key) DO UPDATE SET manual_done=excluded.manual_done, "
             "updated_at=excluded.updated_at",
             (entity_key, 1 if done else 0, now),
+        )
+
+    # ---------------- 下载登记（增量） ----------------
+    def get_download(self, att_key: str) -> sqlite3.Row | None:
+        return self._conn.execute(
+            "SELECT * FROM download WHERE att_key=?", (att_key,)
+        ).fetchone()
+
+    def path_owner(self, local_path: str) -> str | None:
+        row = self._conn.execute(
+            "SELECT att_key FROM download WHERE local_path=?", (local_path,)
+        ).fetchone()
+        return row["att_key"] if row else None
+
+    def need_download(self, att_key: str, src_modified: str | None, size: int | None) -> bool:
+        row = self.get_download(att_key)
+        if row is None or row["status"] != "done":
+            return True
+        if src_modified and row["src_modified_utc"] != src_modified:
+            return True
+        if size is not None and row["size"] is not None and row["size"] != size:
+            return True
+        return False
+
+    def record_download(
+        self, att_key, course_id, local_path, src_modified, size, now, status="done"
+    ) -> None:
+        self._conn.execute(
+            "INSERT INTO download(att_key, course_id, local_path, src_modified_utc, size, "
+            "status, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(att_key) DO UPDATE SET local_path=excluded.local_path, "
+            "src_modified_utc=excluded.src_modified_utc, size=excluded.size, "
+            "status=excluded.status, updated_at=excluded.updated_at",
+            (att_key, course_id, local_path, src_modified, size, status, now),
         )
