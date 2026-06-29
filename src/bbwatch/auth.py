@@ -46,8 +46,9 @@ def login(transport: Transport, creds: Credentials) -> None:
     action, fields = parse_adfs_form(r1.text, base=r1.url or AUTHORIZE_URL)
     data = build_login_post(fields, creds.username, creds.password)
     r2 = transport.request("POST", action, data=data, allow_redirects=True)
-    if urlparse(r2.url).netloc != BB_HOST:
+    # 注意用 hostname（不含端口）比较：真实响应的 netloc 可能是 bb.cuhk.edu.cn:443
+    if urlparse(r2.url).hostname != BB_HOST:
         low = r2.text.lower()
         if any(k in low for k in ("incorrect", "invalid", "try again", "错误")):
             raise CredentialError("ADFS 拒绝：账号或密码错误")
-        raise AuthError(f"登录未落到 BB（最终 URL host={urlparse(r2.url).netloc}）")
+        raise AuthError(f"登录未落到 BB（最终 URL host={urlparse(r2.url).hostname}）")
