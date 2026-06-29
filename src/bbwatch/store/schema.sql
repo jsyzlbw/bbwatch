@@ -68,3 +68,10 @@ CREATE TABLE IF NOT EXISTS download (
     updated_at       TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_download_path ON download(local_path);
+
+-- 认证熔断状态(单行 id=1)：连续凭据失败达阈值即熔断，防学校账号锁定(附录 C.3)。
+CREATE TABLE IF NOT EXISTS auth_state (
+    id                 INTEGER PRIMARY KEY CHECK (id = 1),
+    fail_count         INTEGER NOT NULL DEFAULT 0,
+    circuit_open_until TEXT
+);

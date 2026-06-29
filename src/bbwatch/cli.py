@@ -13,23 +13,46 @@ from .downloader import mirror
 from .notifier import MacNotifier, deliver_pending
 from .scanner import scan
 from .secrets import Credentials, load_credentials, store_credentials
+from .session import ensure_session, save_session
 from .store import Store, now_utc, parse_utc
 from .transport import CurlCffiTransport, Transport
 
 DEFAULT_DEST = Path.home() / "Downloads" / "bbwatch"
 
 
-def run_whoami(transport: Transport, creds: Credentials, login_fn=adfs_login) -> str:
-    login_fn(transport, creds)
-    client = BbClient(transport)
+def _identity_summary(client: BbClient) -> str:
     me = client.get_me()
     courses = client.list_courses(me.id)
     active = [c for c in courses if c.is_active]
     name = me.given_name or me.user_name
-    return (
-        f"已登录：{name}（uid={me.id}）\n"
-        f"课程：共 {len(courses)} 门，在读 {len(active)} 门"
-    )
+    return f"已登录：{name}（uid={me.id}）\n课程：共 {len(courses)} 门，在读 {len(active)} 门"
+
+
+def _authed():
+    """会话缓存版登录：复用 cookie，失效才重登。返回 (client, store, paths)。"""
+    paths = AppPaths()
+    paths.ensure_dirs()
+    store = Store(paths.db_path)
+    creds = load_credentials()
+    transport = CurlCffiTransport()
+
+    def relogin():
+        adfs_login(transport, creds)
+        save_session(transport, paths.session_path)
+
+    def verify(t):
+        try:
+            return BbClient(t).get_me() is not None
+        except Exception:  # noqa: BLE001
+            return False
+
+    ensure_session(transport, store, creds, paths.session_path, now=now_utc(), verify=verify)
+    return BbClient(transport, relogin=relogin), store, paths
+
+
+def run_whoami(transport: Transport, creds: Credentials, login_fn=adfs_login) -> str:
+    login_fn(transport, creds)
+    return _identity_summary(BbClient(transport))
 
 
 def run_scan(client, store, notifier, *, now: str) -> str:
@@ -120,32 +143,19 @@ def cmd_setup(_args) -> int:
 
 
 def cmd_whoami(_args) -> int:
-    creds = load_credentials()
-    print(run_whoami(CurlCffiTransport(), creds))
+    client, _store, _paths = _authed()
+    print(_identity_summary(client))
     return 0
 
 
 def cmd_scan(_args) -> int:
-    paths = AppPaths()
-    paths.ensure_dirs()
-    creds = load_credentials()
-    transport = CurlCffiTransport()
-    adfs_login(transport, creds)
-    client = BbClient(transport)
-    store = Store(paths.db_path)
+    client, store, _paths = _authed()
     print(run_scan(client, store, MacNotifier(), now=now_utc()))
     return 0
 
 
-def _login_client() -> BbClient:
-    creds = load_credentials()
-    transport = CurlCffiTransport()
-    adfs_login(transport, creds)
-    return BbClient(transport)
-
-
 def cmd_courses(_args) -> int:
-    client = _login_client()
+    client, _store, _paths = _authed()
     me = client.get_me()
     active = [c for c in client.list_courses(me.id) if c.is_active]
     print(format_courses(active))
@@ -153,14 +163,11 @@ def cmd_courses(_args) -> int:
 
 
 def cmd_download(args) -> int:
-    paths = AppPaths()
-    paths.ensure_dirs()
-    client = _login_client()
+    client, store, _paths = _authed()
     me = client.get_me()
     active = [c for c in client.list_courses(me.id) if c.is_active]
     course = pick_course(active, args.ref)
     dest = Path(args.dest) if args.dest else DEFAULT_DEST
-    store = Store(paths.db_path)
     print(run_download(client, store, course, dest, now=now_utc()))
     return 0
 

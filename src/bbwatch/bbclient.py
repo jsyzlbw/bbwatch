@@ -4,7 +4,7 @@ from urllib.parse import urljoin
 
 from collections.abc import Iterator
 
-from .errors import TransportError
+from .errors import SessionRefreshError, TransportError
 from .models import Announcement, Attachment, Column, ColumnStatus, Content, Course, Me
 from .transport import Transport
 
@@ -13,12 +13,22 @@ API = "/learn/api/public/v1"
 
 
 class BbClient:
-    def __init__(self, transport: Transport):
+    def __init__(self, transport: Transport, relogin=None):
         self._t = transport
+        self._relogin = relogin  # 会话失效(401)时重登的回调
+
+    def _raw_get(self, url: str, accept: str = "application/json"):
+        r = self._t.request("GET", url, headers={"Accept": accept})
+        if r.status == 401 and self._relogin is not None:
+            self._relogin()  # 请求级失效 → 重登一次 + 重放原请求
+            r = self._t.request("GET", url, headers={"Accept": accept})
+            if r.status == 401:
+                raise SessionRefreshError(f"会话刷新后仍 401: {url}")
+        return r
 
     def _get_json(self, path: str, tolerate_missing: bool = False) -> dict | None:
         url = path if path.startswith("http") else BB + path
-        r = self._t.request("GET", url, headers={"Accept": "application/json"})
+        r = self._raw_get(url)
         # 可选子资源(如某些内容无 attachments)在不同 BB 版本上表现为 400/403/404
         if r.status in (400, 403, 404) and tolerate_missing:
             return None
@@ -85,7 +95,7 @@ class BbClient:
     def get_column_status(self, cid: str, colid: str, uid: str) -> ColumnStatus:
         """per-user 成绩状态。仅此端点：404 语义化为'未提交'（附录 A.3.7）。"""
         url = f"{BB}{API}/courses/{cid}/gradebook/columns/{colid}/users/{uid}"
-        r = self._t.request("GET", url, headers={"Accept": "application/json"})
+        r = self._raw_get(url)
         if r.status == 404:
             return ColumnStatus(status="None", score=None)
         if r.status != 200:

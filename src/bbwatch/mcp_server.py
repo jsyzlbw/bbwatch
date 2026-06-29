@@ -139,14 +139,9 @@ def _default_store():
 
 
 def _default_client():
-    from .auth import login as adfs_login
-    from .bbclient import BbClient
-    from .secrets import load_credentials
-    from .transport import CurlCffiTransport
+    from .cli import _authed  # 复用会话缓存登录
 
-    transport = CurlCffiTransport()
-    adfs_login(transport, load_credentials())
-    return BbClient(transport)
+    return _authed()[0]
 
 
 def _default_notifier():

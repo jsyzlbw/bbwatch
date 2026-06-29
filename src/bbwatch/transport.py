@@ -47,6 +47,13 @@ class FakeTransport:
         self.routes = routes or {}
         self.downloads = downloads or {}  # {url: bytes}
         self.calls: list[tuple[str, str]] = []
+        self._cookies: list[dict] = []
+
+    def export_cookies(self) -> list[dict]:
+        return list(self._cookies)
+
+    def import_cookies(self, cookies: list[dict]) -> None:
+        self._cookies = list(cookies)
 
     def request(self, method, url, *, data=None, headers=None, allow_redirects=True) -> Response:
         self.calls.append((method, url))
@@ -95,6 +102,18 @@ class CurlCffiTransport:
         return Response(
             status=r.status_code, headers=dict(r.headers), text=r.text, url=str(r.url)
         )
+
+    def export_cookies(self) -> list[dict]:
+        return [
+            {"name": c.name, "value": c.value, "domain": c.domain, "path": c.path}
+            for c in self._sess.cookies.jar
+        ]
+
+    def import_cookies(self, cookies: list[dict]) -> None:
+        for c in cookies:
+            self._sess.cookies.set(
+                c["name"], c["value"], domain=c.get("domain") or "", path=c.get("path") or "/"
+            )
 
     def download_to(self, url: str, path: str) -> int:
         tmp = str(path) + ".part"

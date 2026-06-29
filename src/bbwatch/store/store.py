@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 _SCHEMA = Path(__file__).parent / "schema.sql"
 
 
@@ -77,6 +77,38 @@ class Store:
     def finish_scan(self, scan_id: int, status: str, now: str) -> None:
         self._conn.execute(
             "UPDATE scan_run SET finished_at=?, status=? WHERE id=?", (now, status, scan_id)
+        )
+
+    # ---------------- 认证熔断(附录 C.3) ----------------
+    def _auth_row(self) -> sqlite3.Row:
+        row = self._conn.execute("SELECT * FROM auth_state WHERE id=1").fetchone()
+        if row is None:
+            self._conn.execute("INSERT INTO auth_state(id, fail_count) VALUES(1, 0)")
+            row = self._conn.execute("SELECT * FROM auth_state WHERE id=1").fetchone()
+        return row
+
+    def auth_circuit_open(self, now: str) -> bool:
+        row = self._auth_row()
+        until = row["circuit_open_until"]
+        return until is not None and parse_utc(now) < parse_utc(until)
+
+    def record_auth_failure(self, now: str, threshold: int = 3, open_seconds: int = 3600) -> bool:
+        """记一次凭据失败；达阈值则开启熔断。返回是否已熔断。"""
+        self._auth_row()
+        self._conn.execute("UPDATE auth_state SET fail_count = fail_count + 1 WHERE id=1")
+        row = self._auth_row()
+        if row["fail_count"] >= threshold:
+            self._conn.execute(
+                "UPDATE auth_state SET circuit_open_until=? WHERE id=1",
+                (_add_seconds(now, open_seconds),),
+            )
+            return True
+        return False
+
+    def reset_auth_failures(self) -> None:
+        self._auth_row()
+        self._conn.execute(
+            "UPDATE auth_state SET fail_count=0, circuit_open_until=NULL WHERE id=1"
         )
 
     def last_scan_time(self) -> str | None:

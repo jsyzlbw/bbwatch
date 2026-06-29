@@ -3,7 +3,7 @@ from bbwatch.store import Store, now_utc, parse_utc
 
 def test_memory_store_schema_version():
     s = Store(":memory:")
-    assert s.schema_version() == 2
+    assert s.schema_version() == 3
     s.close()
 
 
@@ -13,7 +13,7 @@ def test_file_store_persists_and_no_rebuild(tmp_path):
     s.establish_baseline("_c1", "columns", now_utc())
     s.close()
     s2 = Store(db)
-    assert s2.schema_version() == 2
+    assert s2.schema_version() == 3
     assert s2.baseline_established("_c1", "columns") is True
     s2.close()
 
