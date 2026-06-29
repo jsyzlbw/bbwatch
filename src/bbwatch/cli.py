@@ -255,13 +255,23 @@ def cmd_download(args) -> int:
 
 
 def cmd_dashboard(args) -> int:
+    import subprocess
     import webbrowser
 
     from .dashboard import DashboardState, serve
 
     paths = AppPaths()
     paths.ensure_dirs()
-    state = DashboardState(store_factory=lambda: Store(paths.db_path), now_fn=now_utc)
+
+    def _scan_trigger():  # 网页"立即扫描"→ 后台跑 scan，不阻塞页面
+        subprocess.Popen(
+            [sys.executable, "-m", "bbwatch.cli", "scan"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+        )
+
+    state = DashboardState(
+        store_factory=lambda: Store(paths.db_path), now_fn=now_utc, scan_trigger=_scan_trigger
+    )
     httpd, port = serve(state, port=args.port or load_config(paths.config_path).dashboard_port)
     url = f"http://127.0.0.1:{port}/"
     print(f"任务清单：{url}（Ctrl-C 退出）")

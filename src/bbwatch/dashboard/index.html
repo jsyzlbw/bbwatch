@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>bbwatch · 任务台</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0a0c10; --ink2:#0e1118;
+    --panel:rgba(255,255,255,.035); --panel-hi:rgba(255,255,255,.06);
+    --line:rgba(255,255,255,.09); --line-hi:rgba(255,255,255,.16);
+    --text:#ece9e3; --muted:#8b909c; --faint:#5b606c;
+    --amber:#f6b24b; --coral:#ff6b5e; --rose:#ff4d6d; --gold:#e7c85a;
+    --mint:#54e3a6; --teal:#39c0a8;
+    --serif:"Instrument Serif",ui-serif,Georgia,serif;
+    --sans:"Hanken Grotesk",ui-sans-serif,system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  body{
+    font-family:var(--sans); color:var(--text); background:var(--ink);
+    min-height:100vh; line-height:1.5; letter-spacing:.01em;
+    background-image:
+      radial-gradient(1100px 600px at 12% -8%, rgba(246,178,75,.10), transparent 60%),
+      radial-gradient(900px 700px at 100% 8%, rgba(57,192,168,.08), transparent 55%),
+      radial-gradient(800px 800px at 50% 120%, rgba(255,107,94,.06), transparent 60%);
+    background-attachment:fixed;
+  }
+  /* 颗粒质感 */
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.045;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .wrap{position:relative; z-index:1; max-width:760px; margin:0 auto; padding:38px 22px 80px}
+
+  /* 顶栏 */
+  .top{display:flex; align-items:center; justify-content:space-between; margin-bottom:34px}
+  .brand{display:flex; align-items:baseline; gap:10px}
+  .brand b{font-weight:700; font-size:18px; letter-spacing:-.01em}
+  .brand .dot{width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 12px var(--mint);align-self:center}
+  .brand small{font-family:var(--mono); font-size:11px; color:var(--faint); letter-spacing:.14em; text-transform:uppercase}
+  .scan{
+    font-family:var(--mono); font-size:12px; letter-spacing:.06em; color:var(--text);
+    background:var(--panel); border:1px solid var(--line); border-radius:999px;
+    padding:9px 16px; cursor:pointer; display:flex; align-items:center; gap:8px;
+    transition:.25s; backdrop-filter:blur(8px);
+  }
+  .scan:hover{background:var(--panel-hi); border-color:var(--line-hi); transform:translateY(-1px)}
+  .scan .ic{width:13px;height:13px;display:inline-block}
+  .scan.spin .ic{animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* 主标题(editorial hero) */
+  .hero{margin-bottom:40px; opacity:0; animation:rise .7s .05s cubic-bezier(.2,.7,.2,1) forwards}
+  .hero .lead{font-family:var(--mono); font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); margin-bottom:6px}
+  .hero .big{font-family:var(--serif); font-size:clamp(56px,15vw,104px); line-height:.92; letter-spacing:-.02em; display:flex; align-items:baseline; gap:.18em}
+  .hero .big .u{font-size:.34em; color:var(--muted); font-style:italic}
+  .hero .sub{margin-top:14px; color:var(--muted); font-size:15px}
+  .hero .sub .accent{color:var(--amber); font-style:italic; font-family:var(--serif); font-size:19px}
+  .hero.allclear .big{color:var(--mint)}
+
+  /* 区段标签 */
+  .seg{display:flex; align-items:center; gap:12px; margin:30px 2px 14px}
+  .seg span{font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--faint)}
+  .seg .rule{flex:1; height:1px; background:linear-gradient(90deg,var(--line),transparent)}
+
+  /* 任务行 */
+  .list{display:flex; flex-direction:column; gap:10px}
+  .task{
+    position:relative; display:grid; grid-template-columns:4px 1fr auto; gap:0 16px; align-items:center;
+    background:var(--panel); border:1px solid var(--line); border-radius:16px;
+    padding:16px 18px 16px 16px; overflow:hidden;
+    transition:transform .2s, border-color .2s, background .2s, opacity .35s;
+    opacity:0; animation:rise .55s var(--d,0s) cubic-bezier(.2,.7,.2,1) forwards;
+  }
+  .task:hover{transform:translateY(-2px); border-color:var(--line-hi); background:var(--panel-hi)}
+  .task .bar{grid-row:1/3; align-self:stretch; width:4px; border-radius:4px; background:var(--faint)}
+  .task.ov .bar{background:linear-gradient(var(--rose),var(--coral))}
+  .task.ur .bar{background:linear-gradient(var(--coral),var(--amber))}
+  .task.soon .bar{background:var(--gold)}
+  .task.calm .bar{background:var(--teal)}
+  .task .main{min-width:0}
+  .task .name{font-size:17px; font-weight:600; letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .task .meta{display:flex; align-items:center; gap:10px; margin-top:7px; flex-wrap:wrap}
+  .chip{font-family:var(--mono); font-size:11px; letter-spacing:.02em; padding:3px 9px; border-radius:7px;
+    color:#0a0c10; font-weight:500; white-space:nowrap}
+  .task .when{font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .task .right{display:flex; align-items:center; gap:16px}
+  .rel{font-family:var(--serif); font-style:italic; font-size:20px; line-height:1; text-align:right; white-space:nowrap}
+  .task.ov .rel{color:var(--coral)} .task.ur .rel{color:var(--amber)}
+  .task.soon .rel{color:var(--gold)} .task.calm .rel{color:var(--muted)}
+  .rel small{display:block; font-family:var(--mono); font-style:normal; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); margin-top:3px}
+
+  /* 自定义勾选 */
+  .check{width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line-hi); cursor:pointer; flex:none;
+    display:grid; place-items:center; transition:.25s; background:transparent}
+  .check:hover{border-color:var(--mint)}
+  .check svg{width:14px;height:14px;stroke:var(--ink); stroke-width:3.2; fill:none; stroke-linecap:round; stroke-linejoin:round;
+    stroke-dasharray:22; stroke-dashoffset:22; transition:stroke-dashoffset .3s .05s}
+  .task.done .check{background:var(--mint); border-color:var(--mint); box-shadow:0 0 16px rgba(84,227,166,.4)}
+  .task.done .check svg{stroke-dashoffset:0}
+  .task.done{opacity:.5}
+  .task.done .name{text-decoration:line-through; text-decoration-color:var(--faint); color:var(--muted)}
+  .task.done .bar{background:var(--faint)!important}
+
+  /* 已完成折叠 */
+  .done-wrap{margin-top:18px}
+  .done-head{display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--faint);font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;user-select:none;padding:6px 2px}
+  .done-head:hover{color:var(--muted)}
+  .done-head .arw{transition:.25s} .done-wrap.open .done-head .arw{transform:rotate(90deg)}
+  .done-body{display:none;flex-direction:column;gap:10px;margin-top:8px} .done-wrap.open .done-body{display:flex}
+
+  /* 空状态 */
+  .empty{text-align:center;padding:30px 0 10px;opacity:0;animation:rise .6s .1s forwards}
+  .empty .mk{font-family:var(--serif);font-size:64px;color:var(--mint);line-height:1}
+  .empty p{color:var(--muted);margin-top:10px}
+
+  /* 页脚 */
+  .foot{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+  .foot .l{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.04em}
+  .foot .backlog{color:var(--amber);font-family:var(--sans)}
+  .stale{display:none;align-items:center;gap:8px;background:rgba(246,178,75,.08);border:1px solid rgba(246,178,75,.25);color:var(--amber);border-radius:10px;padding:9px 13px;font-size:13px;margin-bottom:18px}
+  .stale.show{display:flex;animation:rise .5s forwards}
+
+  @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:#16191f;border:1px solid var(--line-hi);color:var(--text);padding:11px 18px;border-radius:12px;font-size:13px;opacity:0;transition:.3s;z-index:9;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><span class="dot"></span><b>bbwatch</b><small>任务台</small></div>
+    <button class="scan" id="scanBtn" onclick="doScan()">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v5h-5"/></svg>
+      <span id="scanTxt">扫描</span>
+    </button>
+  </div>
+
+  <div class="stale" id="stale"></div>
+
+  <div class="hero" id="hero"></div>
+
+  <div id="board"></div>
+
+  <div class="foot">
+    <div class="l" id="lastScan">—</div>
+    <div class="l" id="footRight"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const DEMO = {tasks:[
+  {entity_key:"col:_a:_1",course:"MAT3007:Optimization_L01",name:"Homework 4",due_utc:isoIn(46),done:false},
+  {entity_key:"col:_b:_2",course:"DDA2001:Introduction to Data Science",name:"Mock Quiz",due_utc:isoIn(-120),done:false},
+  {entity_key:"col:_c:_3",course:"CSC3001:Discrete Mathematics",name:"Assignment 2",due_utc:isoIn(140),done:false},
+  {entity_key:"col:_d:_4",course:"STA2001H:Probability & Statistics",name:"Problem Set 5",due_utc:isoIn(18),done:true},
+], last_scan:isoIn(-0.3), summary:"⏳ 3 项已交作业逾 2 周未出分（可催老师）", demo:true};
+function isoIn(h){return new Date(Date.now()+h*3600*1000).toISOString().replace('Z','.000Z')}
+
+let STATE=null;
+const $=s=>document.querySelector(s);
+const esc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function parseUTC(s){return new Date(String(s).replace('Z','+00:00').replace(/(\.\d+)?\+00:00$/,'+00:00'))}
+function hue(s){let h=0;for(const c of (s||''))h=(h*31+c.charCodeAt(0))%360;return h}
+function courseShort(c){const m=String(c||'').match(/^[A-Z]{2,4}\d{3,4}[A-Z]?/);return m?m[0]:String(c||'').slice(0,8)}
+
+async function load(){
+  let d;
+  try{const r=await fetch('/api/tasks',{cache:'no-store'});d=await r.json();}
+  catch(e){d=DEMO;}
+  STATE=d; render();
+}
+function classify(due,now){const h=(due-now)/3600000; if(h<0)return['ov','已逾期'];if(h<=24)return['ur','紧急'];if(h<=72)return['soon','临近'];return['calm','充裕'];}
+function rel(due,now){let h=(due-now)/3600000;const past=h<0;h=Math.abs(h);
+  let t; if(h<1)t=Math.max(1,Math.round(h*60))+'分';else if(h<48)t=Math.round(h)+'h';else t=Math.round(h/24)+'天';
+  return past?{n:t,u:'前已逾期'}:{n:t,u:'后截止'};}
+function fmt(due){const l=new Date(due.getTime()+8*3600*1000);const p=n=>String(n).padStart(2,'0');return `${p(l.getUTCMonth()+1)}/${p(l.getUTCDate())} ${p(l.getUTCHours())}:${p(l.getUTCMinutes())}`}
+
+function taskRow(t,i){
+  const due=parseUTC(t.due_utc), now=Date.now();
+  const [cls,_]=classify(due,now); const r=rel(due,now);
+  const hu=hue(t.course); const chip=`background:hsl(${hu} 70% 62%)`;
+  const cl=t.done?'calm':cls;
+  return `<div class="task ${cl} ${t.done?'done':''}" style="--d:${.06*i+.12}s">
+    <div class="bar"></div>
+    <div class="main">
+      <div class="name">${esc(t.name)}</div>
+      <div class="meta">
+        <span class="chip" style="${chip}">${esc(courseShort(t.course))}</span>
+        <span class="when">${fmt(due)}</span>
+      </div>
+    </div>
+    <div class="right">
+      ${t.done?'':`<div class="rel">${r.n}<small>${r.u}</small></div>`}
+      <div class="check" role="checkbox" aria-checked="${t.done}" onclick="toggle('${t.entity_key}',${!t.done})">
+        <svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+      </div>
+    </div>
+  </div>`;
+}
+
+function render(){
+  const tasks=(STATE.tasks||[]).slice();
+  const now=Date.now();
+  const todo=tasks.filter(t=>!t.done).sort((a,b)=>parseUTC(a.due_utc)-parseUTC(b.due_utc));
+  const done=tasks.filter(t=>t.done).sort((a,b)=>parseUTC(b.due_utc)-parseUTC(a.due_utc));
+
+  // hero
+  const hero=$('#hero');
+  if(todo.length===0){
+    hero.className='hero allclear';
+    hero.innerHTML=`<div class="lead">CUHK-SZ · Blackboard</div>
+      <div class="big">全部搞定<span class="u">✓</span></div>
+      <div class="sub">没有待完成的作业，去做点别的吧。</div>`;
+  }else{
+    const nx=parseUTC(todo[0].due_utc); const r=rel(nx,now);
+    const overdue=todo.filter(t=>parseUTC(t.due_utc)-now<0).length;
+    hero.className='hero';
+    hero.innerHTML=`<div class="lead">CUHK-SZ · Blackboard</div>
+      <div class="big">${todo.length}<span class="u">项待完成</span></div>
+      <div class="sub">最近 <span class="accent">${r.n} ${r.u}</span> · ${esc(courseShort(todo[0].course))} ${esc(todo[0].name)}${overdue?` · <span style="color:var(--coral)">${overdue} 项已逾期</span>`:''}</div>`;
+  }
+
+  // board
+  let html='';
+  if(todo.length){
+    html+=`<div class="seg"><span>待完成 · ${todo.length}</span><div class="rule"></div></div>
+      <div class="list">${todo.map((t,i)=>taskRow(t,i)).join('')}</div>`;
+  }else{
+    html+=`<div class="empty"><div class="mk">✓</div><p>清单已清空</p></div>`;
+  }
+  if(done.length){
+    html+=`<div class="done-wrap" id="dw"><div class="done-head" onclick="document.getElementById('dw').classList.toggle('open')">
+      <svg class="arw" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 1l4 4-4 4"/></svg>
+      已完成 · ${done.length}</div>
+      <div class="done-body">${done.map((t,i)=>taskRow(t,i)).join('')}</div></div>`;
+  }
+  $('#board').innerHTML=html;
+
+  // footer + stale
+  const ls=STATE.last_scan?parseUTC(STATE.last_scan):null;
+  $('#lastScan').textContent = ls? `上次扫描 ${rel(ls,now).n}前${STATE.demo?' · 演示数据':''}` : '尚未扫描';
+  const backlog=(STATE.summary||'').match(/(\d+)\s*项已交作业逾/);
+  $('#footRight').innerHTML = backlog? `<span class="backlog">⏳ ${backlog[1]} 项已交未出分</span>` : '';
+  const st=$('#stale');
+  if(ls && (now-ls)/3600000>12 && todo.some(t=>{const h=(parseUTC(t.due_utc)-now)/3600000;return h>0&&h<72})){
+    st.className='stale show'; st.textContent='⚠ 距上次扫描已超过 12 小时，且有临近截止 — 建议点右上角刷新';
+  }else st.className='stale';
+}
+
+async function toggle(key,done){
+  const t=(STATE.tasks||[]).find(x=>x.entity_key===key); if(t)t.done=done; render();
+  try{await fetch('/api/done',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entity_key:key,done})});}
+  catch(e){toast('离线演示：仅本地切换')}
+}
+async function doScan(){
+  const b=$('#scanBtn'); b.classList.add('spin'); $('#scanTxt').textContent='扫描中';
+  try{await fetch('/api/scan',{method:'POST'});toast('已开始扫描，约 40 秒后自动刷新');}
+  catch(e){toast('离线演示：无法扫描')}
+  let n=0;const iv=setInterval(async()=>{await load();if(++n>=16){clearInterval(iv);b.classList.remove('spin');$('#scanTxt').textContent='扫描'}},3000);
+  setTimeout(()=>{b.classList.remove('spin');$('#scanTxt').textContent='扫描'},48000);
+}
+function toast(m){const t=$('#toast');t.textContent=m;t.className='toast show';clearTimeout(t._);t._=setTimeout(()=>t.className='toast',2600)}
+
+load();
+setInterval(()=>{if(STATE)render()},60000); // 每分钟刷新倒计时
+</script>
+</body>
+</html>

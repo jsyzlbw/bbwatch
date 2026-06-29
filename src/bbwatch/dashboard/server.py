@@ -1,52 +1,14 @@
-"""本地任务清单网页：仅绑 127.0.0.1。GET / 页面；/api/tasks 数据；/api/done 勾选回写。
-核心逻辑在 DashboardState(可单测)，HTTP 处理是薄壳。"""
+"""本地任务清单网页：仅绑 127.0.0.1。GET / 页面；/api/tasks 数据；/api/done 勾选回写；
+/api/scan 触发后台扫描。核心逻辑在 DashboardState(可单测)，HTTP 处理是薄壳。
+页面在 index.html(同目录)，由前端设计单独维护。"""
 from __future__ import annotations
 
 import json
 import socket
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
-INDEX_HTML = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
-<title>bbwatch 任务清单</title><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
- body{font:15px/1.5 -apple-system,system-ui,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;color:#1c1c1e}
- h1{font-size:20px} .banner{background:#fff7e6;border:1px solid #ffd591;padding:8px 12px;border-radius:8px;margin:12px 0;white-space:pre-wrap}
- ul{list-style:none;padding:0} li{display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid #eee}
- li.done{opacity:.5} .due{font-variant-numeric:tabular-nums;color:#666;min-width:96px}
- .overdue{color:#d4380d;font-weight:600} .urgent{color:#fa8c16;font-weight:600}
- .name{flex:1} .course{color:#888;font-size:13px} button{margin-left:auto}
- input[type=checkbox]{width:18px;height:18px}
-</style></head><body>
-<h1>📚 bbwatch 任务清单</h1>
-<div id="banner" class="banner"></div>
-<button onclick="scan()">立即扫描</button>
-<ul id="list"></ul>
-<script>
-async function load(){
-  const r=await fetch('/api/tasks'); const d=await r.json();
-  document.getElementById('banner').textContent=d.summary||'';
-  const ul=document.getElementById('list'); ul.innerHTML='';
-  const now=Date.now();
-  for(const t of d.tasks){
-    const li=document.createElement('li'); if(t.done) li.className='done';
-    const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=t.done;
-    cb.onchange=()=>toggle(t.entity_key,cb.checked);
-    const due=new Date(t.due_utc.replace('Z','+00:00'));
-    const local=new Date(due.getTime()+8*3600*1000);
-    const dh=(due-now)/3600000;
-    const ds=document.createElement('span'); ds.className='due';
-    ds.textContent=local.toISOString().slice(5,16).replace('T',' ');
-    if(!t.done){ if(dh<0)ds.className='due overdue'; else if(dh<=24)ds.className='due urgent'; }
-    const nm=document.createElement('span'); nm.className='name';
-    nm.innerHTML='<b>'+escapeHtml(t.name||'')+'</b> <span class="course">'+escapeHtml(t.course||t.course_id||'')+'</span>';
-    li.append(cb,ds,nm); ul.append(li);
-  }
-}
-async function toggle(k,done){ await fetch('/api/done',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entity_key:k,done})}); load(); }
-async function scan(){ document.getElementById('banner').textContent='扫描中…'; await fetch('/api/scan',{method:'POST'}); setTimeout(load,1500); }
-function escapeHtml(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-load();
-</script></body></html>"""
+INDEX_HTML = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
 
 
 class DashboardState:
@@ -92,7 +54,8 @@ def make_handler(state: DashboardState):
             self.wfile.write(body)
 
         def _json(self, obj, code=200):
-            self._send(code, json.dumps(obj, ensure_ascii=False).encode(), "application/json; charset=utf-8")
+            self._send(code, json.dumps(obj, ensure_ascii=False).encode(),
+                       "application/json; charset=utf-8")
 
         def do_GET(self):
             if self.path == "/" or self.path.startswith("/index"):

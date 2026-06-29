@@ -24,7 +24,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-bbwatch = ["store/*.sql"]
+bbwatch = ["store/*.sql", "dashboard/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
