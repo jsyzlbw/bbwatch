@@ -167,7 +167,7 @@ let STATE=null;
 const $=s=>document.querySelector(s);
 const esc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function parseUTC(s){return new Date(String(s).replace('Z','+00:00').replace(/(\.\d+)?\+00:00$/,'+00:00'))}
-function hue(s){let h=0;for(const c of (s||''))h=(h*31+c.charCodeAt(0))%360;return h}
+function hue(s){let h=0;for(const c of (s||''))h=(h*31+c.charCodeAt(0))>>>0;return Math.round((h*137.508)%360)}
 function courseShort(c){const m=String(c||'').match(/^[A-Z]{2,4}\d{3,4}[A-Z]?/);return m?m[0]:String(c||'').slice(0,8)}
 
 async function load(){
@@ -219,12 +219,21 @@ function render(){
       <div class="big">全部搞定<span class="u">✓</span></div>
       <div class="sub">没有待完成的作业，去做点别的吧。</div>`;
   }else{
-    const nx=parseUTC(todo[0].due_utc); const r=rel(nx,now);
-    const overdue=todo.filter(t=>parseUTC(t.due_utc)-now<0).length;
+    const upcoming=todo.filter(t=>parseUTC(t.due_utc)-now>=0);
+    const overdue=todo.length-upcoming.length;
+    let sub;
+    if(upcoming.length){
+      const u=upcoming[0]; const r=rel(parseUTC(u.due_utc),now);
+      sub=`最近 <span class="accent">${r.n} ${r.u}</span> · ${esc(courseShort(u.course))} ${esc(u.name)}`;
+    }else{
+      const o=todo[0]; const r=rel(parseUTC(o.due_utc),now);
+      sub=`<span class="accent">最早一项 ${r.n}${r.u}</span>`;
+    }
+    if(overdue)sub+=` · <span style="color:var(--coral)">${overdue} 项已逾期</span>`;
     hero.className='hero';
     hero.innerHTML=`<div class="lead">CUHK-SZ · Blackboard</div>
       <div class="big">${todo.length}<span class="u">项待完成</span></div>
-      <div class="sub">最近 <span class="accent">${r.n} ${r.u}</span> · ${esc(courseShort(todo[0].course))} ${esc(todo[0].name)}${overdue?` · <span style="color:var(--coral)">${overdue} 项已逾期</span>`:''}</div>`;
+      <div class="sub">${sub}</div>`;
   }
 
   // board
