@@ -18,7 +18,10 @@ venv/
 .env
 .env.*
 *.creds
-secrets.*
+*.secret
+secrets.json
+secrets.yaml
+secrets.toml
 config.local.*
 
 # 下载的课件镜像（体积大，不入库）
