@@ -29,6 +29,8 @@ def mirror(client, store, course, dest, *, now) -> MirrorResult:
     res = MirrorResult()
     base = Path(dest) / _safe(course.course_id or course.id)
     for ancestors, content in client.walk_contents(course.id):
+        if content.handler == "resource/x-bb-folder":
+            continue  # 文件夹本身无附件，跳过(也省一次请求)
         try:
             atts = client.list_attachments(course.id, content.id)
         except Exception as e:  # noqa: BLE001

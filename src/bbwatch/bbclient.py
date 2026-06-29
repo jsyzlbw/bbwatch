@@ -16,10 +16,11 @@ class BbClient:
     def __init__(self, transport: Transport):
         self._t = transport
 
-    def _get_json(self, path: str, allow_404: bool = False) -> dict | None:
+    def _get_json(self, path: str, tolerate_missing: bool = False) -> dict | None:
         url = path if path.startswith("http") else BB + path
         r = self._t.request("GET", url, headers={"Accept": "application/json"})
-        if r.status == 404 and allow_404:
+        # 可选子资源(如某些内容无 attachments)在不同 BB 版本上表现为 400/403/404
+        if r.status in (400, 403, 404) and tolerate_missing:
             return None
         if r.status != 200:
             raise TransportError(f"GET {path} -> {r.status}")
@@ -28,9 +29,9 @@ class BbClient:
             raise TransportError(f"GET {path} 非 JSON 响应")
         return j
 
-    def _paginate(self, first_path: str, allow_404: bool = False) -> list[dict]:
+    def _paginate(self, first_path: str, tolerate_missing: bool = False) -> list[dict]:
         """跟随 paging.nextPage 取全集；任一页失败上抛。带不前进/runaway 守卫。
-        allow_404=True 时首页 404 视为空集(如文件夹无 attachments 子资源)。"""
+        tolerate_missing=True 时首页 4xx 视为空集(可选子资源缺失，如文件夹无附件)。"""
         results: list[dict] = []
         path = first_path
         seen_urls: set[str] = set()
@@ -40,8 +41,8 @@ class BbClient:
                 raise TransportError(f"分页异常(自指或过长): {path}")
             seen_urls.add(path)
             guard += 1
-            j = self._get_json(path, allow_404=allow_404)
-            if j is None:  # 404 容忍
+            j = self._get_json(path, tolerate_missing=tolerate_missing)
+            if j is None:  # 4xx 容忍 → 空
                 break
             results.extend(j.get("results", []))
             nxt = (j.get("paging") or {}).get("nextPage")
@@ -129,9 +130,10 @@ class BbClient:
         yield from rec(self.list_contents(cid), [], 0)
 
     def list_attachments(self, cid: str, content_id: str) -> list[Attachment]:
-        # 文件夹/链接等内容无 attachments 子资源(404)→ 视为空
+        # 文件夹/链接等内容无 attachments 子资源(4xx)→ 视为空
         rows = self._paginate(
-            f"{API}/courses/{cid}/contents/{content_id}/attachments?limit=100", allow_404=True
+            f"{API}/courses/{cid}/contents/{content_id}/attachments?limit=100",
+            tolerate_missing=True,
         )
         return [
             Attachment(id=a["id"], file_name=a.get("fileName") or a["id"],
