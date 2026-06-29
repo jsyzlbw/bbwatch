@@ -28,6 +28,12 @@ def test_walk_contents_recurses():
     assert items == [([], "Content"), (["Content"], "Slides 1"), ([], "Syllabus")]
 
 
+def test_list_attachments_404_returns_empty():
+    url = C + "/contents/_f1/attachments?limit=100"
+    t = FakeTransport({("GET", url): Response(404, {"Content-Type": "application/json"}, "{}", "u")})
+    assert BbClient(t).list_attachments("_c1", "_f1") == []  # 文件夹无附件
+
+
 def test_list_attachments_and_download(tmp_path):
     dl = BB + API + "/courses/_c1/contents/_d1/attachments/_a1/download"
     t = FakeTransport(

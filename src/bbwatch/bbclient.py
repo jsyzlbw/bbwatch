@@ -16,9 +16,11 @@ class BbClient:
     def __init__(self, transport: Transport):
         self._t = transport
 
-    def _get_json(self, path: str) -> dict:
+    def _get_json(self, path: str, allow_404: bool = False) -> dict | None:
         url = path if path.startswith("http") else BB + path
         r = self._t.request("GET", url, headers={"Accept": "application/json"})
+        if r.status == 404 and allow_404:
+            return None
         if r.status != 200:
             raise TransportError(f"GET {path} -> {r.status}")
         j = r.json()
@@ -26,8 +28,9 @@ class BbClient:
             raise TransportError(f"GET {path} 非 JSON 响应")
         return j
 
-    def _paginate(self, first_path: str) -> list[dict]:
-        """跟随 paging.nextPage 取全集；任一页失败上抛。带不前进/runaway 守卫。"""
+    def _paginate(self, first_path: str, allow_404: bool = False) -> list[dict]:
+        """跟随 paging.nextPage 取全集；任一页失败上抛。带不前进/runaway 守卫。
+        allow_404=True 时首页 404 视为空集(如文件夹无 attachments 子资源)。"""
         results: list[dict] = []
         path = first_path
         seen_urls: set[str] = set()
@@ -37,7 +40,9 @@ class BbClient:
                 raise TransportError(f"分页异常(自指或过长): {path}")
             seen_urls.add(path)
             guard += 1
-            j = self._get_json(path)
+            j = self._get_json(path, allow_404=allow_404)
+            if j is None:  # 404 容忍
+                break
             results.extend(j.get("results", []))
             nxt = (j.get("paging") or {}).get("nextPage")
             if not nxt or nxt == path:
@@ -124,7 +129,10 @@ class BbClient:
         yield from rec(self.list_contents(cid), [], 0)
 
     def list_attachments(self, cid: str, content_id: str) -> list[Attachment]:
-        rows = self._paginate(f"{API}/courses/{cid}/contents/{content_id}/attachments?limit=100")
+        # 文件夹/链接等内容无 attachments 子资源(404)→ 视为空
+        rows = self._paginate(
+            f"{API}/courses/{cid}/contents/{content_id}/attachments?limit=100", allow_404=True
+        )
         return [
             Attachment(id=a["id"], file_name=a.get("fileName") or a["id"],
                        mime_type=a.get("mimeType"))
