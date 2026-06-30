@@ -40,6 +40,14 @@ def list_tasks() -> str:
 
 
 @mcp.tool()
+def list_pending() -> str:
+    """列出已提交但未出分(待批改)的作业。用户问"哪些作业交了还没出分 / 待批改 / 等出分"时调用。"""
+    from .cli import format_pending
+
+    return format_pending(_store().submitted_ungraded())
+
+
+@mcp.tool()
 def mark_task_done(n: int, done: bool) -> str:
     """把 list_tasks 中第 n 项标记为完成(done=true)或未完成(done=false)。"""
     from .cli import run_mark_done

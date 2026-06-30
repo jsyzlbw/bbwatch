@@ -112,6 +112,20 @@ def run_mark_done(store, n: int, done: bool, now: str) -> str:
     return f"已将 [{n}] {t['name']}（{t['course_id']}）标记为{state}"
 
 
+def format_pending(items: list[dict]) -> str:
+    if not items:
+        return "没有已提交待批改的作业 ✓"
+    lines = ["已提交待批改（等待出分）："]
+    for i, t in enumerate(items, 1):
+        wd = t.get("waited_days")
+        tag = ""
+        if wd is not None:
+            tag = f"  · 已等 {wd} 天" + ("，可催老师" if wd >= 14 else "")
+        course = t.get("course") or t["course_id"]
+        lines.append(f"[{i}] {t['name']}  ({course}){tag}")
+    return "\n".join(lines)
+
+
 def format_courses(courses: list) -> str:
     if not courses:
         return "没有在读课程"
@@ -294,6 +308,14 @@ def cmd_tasks(_args) -> int:
     return 0
 
 
+def cmd_pending(_args) -> int:
+    paths = AppPaths()
+    paths.ensure_dirs()
+    store = Store(paths.db_path)
+    print(format_pending(store.submitted_ungraded()))
+    return 0
+
+
 def cmd_done(args) -> int:
     paths = AppPaths()
     paths.ensure_dirs()
@@ -319,6 +341,7 @@ def main(argv=None) -> int:
     sub.add_parser("whoami", help="登录并打印身份与课程数").set_defaults(fn=cmd_whoami)
     sub.add_parser("scan", help="扫描 BB，检测新作业/改期/公告/出分并通知").set_defaults(fn=cmd_scan)
     sub.add_parser("tasks", help="列出可跟踪作业(编号 + ○/✓)").set_defaults(fn=cmd_tasks)
+    sub.add_parser("pending", help="查看已提交但未出分的作业").set_defaults(fn=cmd_pending)
     p_done = sub.add_parser("done", help="把 tasks 列表第 N 项标记为已完成")
     p_done.add_argument("n", type=int, help="bbwatch tasks 中的编号")
     p_done.set_defaults(fn=cmd_done)

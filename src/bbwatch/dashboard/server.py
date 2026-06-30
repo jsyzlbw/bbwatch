@@ -24,6 +24,7 @@ class DashboardState:
         try:
             return {
                 "tasks": store.actionable_tasks(),
+                "pending": store.submitted_ungraded(),  # 已提交待批改
                 "last_scan": store.last_scan_time(),
                 "summary": build_session_summary(store, self._now()),
             }

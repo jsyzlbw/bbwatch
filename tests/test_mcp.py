@@ -26,7 +26,8 @@ def _seed(tmp_path, monkeypatch, status="None"):
 def test_fastmcp_registers_five_tools():
     tools = asyncio.run(mcp_server.mcp.list_tools())
     names = {t.name for t in tools}
-    assert {"list_tasks", "mark_task_done", "scan_now", "list_courses", "download_course"} <= names
+    assert {"list_tasks", "list_pending", "mark_task_done", "scan_now",
+            "list_courses", "download_course"} <= names
 
 
 def test_tools_have_input_schema():

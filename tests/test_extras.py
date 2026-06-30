@@ -87,3 +87,23 @@ def test_grading_backlog_and_summary():
     sid = s.start_scan(NOW)
     s.finish_scan(sid, "ok", NOW)
     assert "未出分" in build_session_summary(s, NOW)
+
+
+def test_submitted_ungraded_and_format():
+    from bbwatch.cli import format_pending
+    from bbwatch.diff import diff_columns
+
+    s = Store(":memory:")
+    for ch in diff_columns(
+        {}, [Column("_h1", "HW2", "2026-05-01T15:59:00.000Z")],
+        {"_h1": ColumnStatus("NeedsGrading")}, cid="_c", scan_id=1, suppress=False,
+        course_code="MAT3007:Optimization_L01",
+    ):
+        s.apply_change(ch, NOW)
+    p = s.submitted_ungraded()
+    assert len(p) == 1 and p[0]["name"] == "HW2"
+    assert p[0]["course"] == "MAT3007:Optimization_L01"
+    assert p[0]["waited_days"] is not None and p[0]["waited_days"] >= 0
+    out = format_pending(p)
+    assert "HW2" in out and "待批改" in out
+    assert "没有已提交" in format_pending([])

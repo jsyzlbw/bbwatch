@@ -85,16 +85,16 @@
 
   /* 主标题(editorial hero) */
   .hero{margin-bottom:40px; opacity:0; animation:rise .7s .05s cubic-bezier(.2,.7,.2,1) forwards}
-  .hero .lead{font-family:var(--mono); font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); margin-bottom:6px}
-  .hero .big{font-family:var(--serif); font-size:clamp(56px,15vw,104px); line-height:.92; letter-spacing:-.02em; display:flex; align-items:baseline; gap:.18em}
-  .hero .big .u{font-size:.34em; color:var(--muted); font-style:italic}
-  .hero .sub{margin-top:14px; color:var(--muted); font-size:15px}
+  .hero .lead{font-family:var(--mono); font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); margin-bottom:8px}
+  .hero .big{font-family:var(--serif); font-size:clamp(48px,9vw,80px); line-height:.94; letter-spacing:-.02em; display:flex; align-items:baseline; gap:.18em}
+  .hero .big .u{font-size:.38em; color:var(--muted); font-style:italic}
+  .hero .sub{margin-top:16px; color:var(--muted); font-size:16.5px}
   .hero .sub .accent{color:var(--amber); font-style:italic; font-family:var(--serif); font-size:19px}
   .hero.allclear .big{color:var(--mint)}
 
   /* 区段标签 */
   .seg{display:flex; align-items:center; gap:12px; margin:30px 2px 14px}
-  .seg span{font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--faint)}
+  .seg span{font-family:var(--mono); font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted)}
   .seg .rule{flex:1; height:1px; background:linear-gradient(90deg,var(--line),transparent)}
 
   /* 任务行 */
@@ -138,20 +138,21 @@
 
   /* 已完成折叠 */
   .done-wrap{margin-top:18px}
-  .done-head{display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--faint);font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;user-select:none;padding:6px 2px}
+  .done-head{display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--muted);font-family:var(--mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;user-select:none;padding:8px 2px}
   .done-head:hover{color:var(--muted)}
   .done-head .arw{transition:.25s} .done-wrap.open .done-head .arw{transform:rotate(90deg)}
   .done-body{display:none;flex-direction:column;gap:10px;margin-top:8px} .done-wrap.open .done-body{display:flex}
 
   /* 空状态 */
   .empty{text-align:center;padding:30px 0 10px;opacity:0;animation:rise .6s .1s forwards}
-  .empty .mk{font-family:var(--serif);font-size:64px;color:var(--mint);line-height:1}
-  .empty p{color:var(--muted);margin-top:10px}
+  .empty .mk{font-family:var(--serif);font-size:72px;color:var(--mint);line-height:1}
+  .empty p{color:var(--muted);margin-top:12px;font-size:16.5px}
 
   /* 页脚 */
   .foot{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
-  .foot .l{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.04em}
-  .foot .backlog{color:var(--amber);font-family:var(--sans)}
+  .foot .l{font-family:var(--mono);font-size:13.5px;color:var(--muted);letter-spacing:.03em}
+  .foot .backlog{color:var(--teal);font-family:var(--sans);font-weight:600;cursor:pointer;text-decoration:none}
+  .foot .backlog:hover{color:var(--mint)}
   .stale{display:none;align-items:center;gap:8px;background:rgba(246,178,75,.08);border:1px solid rgba(246,178,75,.25);color:var(--amber);border-radius:10px;padding:9px 13px;font-size:13px;margin-bottom:18px}
   .stale.show{display:flex;animation:rise .5s forwards}
 
@@ -192,6 +193,10 @@ const DEMO = {tasks:[
   {entity_key:"col:_b:_2",course:"DDA2001:Introduction to Data Science",name:"Mock Quiz",due_utc:isoIn(-120),done:false},
   {entity_key:"col:_c:_3",course:"CSC3001:Discrete Mathematics",name:"Assignment 2",due_utc:isoIn(140),done:false},
   {entity_key:"col:_d:_4",course:"STA2001H:Probability & Statistics",name:"Problem Set 5",due_utc:isoIn(18),done:true},
+], pending:[
+  {entity_key:"col:_e:_5",course:"MAT3007:Optimization_L01",name:"Homework 2",due_utc:isoIn(-24*20),waited_days:20},
+  {entity_key:"col:_f:_6",course:"MAT3350:Information Theory",name:"Assignment 1",due_utc:isoIn(-24*5),waited_days:5},
+  {entity_key:"col:_g:_7",course:"DDA2001:Introduction to Data Science",name:"Homework 3",due_utc:isoIn(-24*9),waited_days:9},
 ], last_scan:isoIn(-0.3), summary:"⏳ 3 项已交作业逾 2 周未出分（可催老师）", demo:true};
 function isoIn(h){return new Date(Date.now()+h*3600*1000).toISOString().replace('Z','.000Z')}
 
@@ -209,6 +214,21 @@ function themeNow(){return document.documentElement.getAttribute('data-theme')||
 function setThemeIcon(){const b=document.getElementById('themeBtn'); if(b)b.innerHTML=themeNow()==='dark'?SUN:MOON;}
 function toggleTheme(){const t=themeNow()==='dark'?'light':'dark'; try{localStorage.setItem('bbwatch-theme',t)}catch(e){} document.documentElement.setAttribute('data-theme',t); setThemeIcon();}
 setThemeIcon();
+
+// 已提交待批改
+function openPending(){const w=document.getElementById('pw'); if(w){w.classList.add('open'); w.scrollIntoView({behavior:'smooth',block:'center'});}}
+function pendingRow(t,i){
+  const due=parseUTC(t.due_utc); const hu=hue(t.course); const wd=t.waited_days;
+  const wtag = wd==null?'':(wd>=14?`<span style="color:var(--amber);font-weight:600">已等 ${wd} 天 · 可催老师</span>`:`已等 ${wd} 天`);
+  return `<div class="task calm" style="--d:${.05*i+.05}s">
+    <div class="bar" style="background:var(--teal)"></div>
+    <div class="main">
+      <div class="name">${esc(t.name)}</div>
+      <div class="meta"><span class="chip" style="background:hsl(${hu} 70% 60%)">${esc(courseShort(t.course))}</span><span class="when">${fmt(due)} 截止${wtag?` · ${wtag}`:''}</span></div>
+    </div>
+    <div class="right"><div class="rel" style="color:var(--teal);font-size:17px">待批改</div></div>
+  </div>`;
+}
 
 async function load(){
   let d;
@@ -250,6 +270,7 @@ function render(){
   const now=Date.now();
   const todo=tasks.filter(t=>!t.done).sort((a,b)=>parseUTC(a.due_utc)-parseUTC(b.due_utc));
   const done=tasks.filter(t=>t.done).sort((a,b)=>parseUTC(b.due_utc)-parseUTC(a.due_utc));
+  const pend=(STATE.pending||[]);
 
   // hero
   const hero=$('#hero');
@@ -284,6 +305,12 @@ function render(){
   }else{
     html+=`<div class="empty"><div class="mk">✓</div><p>清单已清空</p></div>`;
   }
+  if(pend.length){
+    html+=`<div class="done-wrap" id="pw"><div class="done-head" onclick="document.getElementById('pw').classList.toggle('open')">
+      <svg class="arw" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 1l4 4-4 4"/></svg>
+      已提交待批改 · ${pend.length}</div>
+      <div class="done-body">${pend.map((t,i)=>pendingRow(t,i)).join('')}</div></div>`;
+  }
   if(done.length){
     html+=`<div class="done-wrap" id="dw"><div class="done-head" onclick="document.getElementById('dw').classList.toggle('open')">
       <svg class="arw" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 1l4 4-4 4"/></svg>
@@ -295,8 +322,7 @@ function render(){
   // footer + stale
   const ls=STATE.last_scan?parseUTC(STATE.last_scan):null;
   $('#lastScan').textContent = ls? `上次扫描 ${rel(ls,now).n}前${STATE.demo?' · 演示数据':''}` : '尚未扫描';
-  const backlog=(STATE.summary||'').match(/(\d+)\s*项已交作业逾/);
-  $('#footRight').innerHTML = backlog? `<span class="backlog">⏳ ${backlog[1]} 项已交未出分</span>` : '';
+  $('#footRight').innerHTML = pend.length? `<span class="backlog" onclick="openPending()">⏳ ${pend.length} 项已交待批改 →</span>` : '';
   const st=$('#stale');
   if(ls && (now-ls)/3600000>12 && todo.some(t=>{const h=(parseUTC(t.due_utc)-now)/3600000;return h>0&&h<72})){
     st.className='stale show'; st.textContent='⚠ 距上次扫描已超过 12 小时，且有临近截止 — 建议点右上角刷新';

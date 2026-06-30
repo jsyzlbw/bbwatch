@@ -343,6 +343,33 @@ class Store:
             for r in rows
         ]
 
+    def submitted_ungraded(self) -> list[dict]:
+        """已提交但未出分(status=NeedsGrading)的作业，按截止升序。每项含 waited_days(交后等待天数)。"""
+        from datetime import datetime, timezone
+
+        rows = self._conn.execute(
+            "SELECT * FROM seen_entity WHERE kind='column' AND archived=0 "
+            "AND grade_status='NeedsGrading' ORDER BY due_utc ASC"
+        ).fetchall()
+        now_dt = datetime.now(timezone.utc)
+        out: list[dict] = []
+        for r in rows:
+            payload = json.loads(r["payload_json"])
+            waited = None
+            if r["due_utc"]:
+                waited = max(0, int((now_dt - parse_utc(r["due_utc"])).total_seconds() // 86400))
+            out.append(
+                {
+                    "entity_key": r["entity_key"],
+                    "course_id": r["course_id"],
+                    "course": payload.get("course_code") or r["course_id"],
+                    "name": payload.get("name"),
+                    "due_utc": r["due_utc"],
+                    "waited_days": waited,
+                }
+            )
+        return out
+
     def record_download(
         self, att_key, course_id, local_path, src_modified, size, now, status="done"
     ) -> None:
