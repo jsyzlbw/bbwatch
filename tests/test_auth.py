@@ -52,6 +52,23 @@ def test_parse_adfs_form_extracts_action_and_fields():
     assert "UserName" in fields and "Password" in fields and fields["Kmsi"] == "true"
 
 
+def test_parse_adfs_form_picks_password_form_not_paginated():
+    # 真实页有两个 form：分步(无密码)在前、真正登录表单(含 Password)在后。
+    # 必须选含 Password 的那个，否则 POST 缺密码字段 → 登录失败。
+    html = (FIX / "adfs_form.html").read_text()
+    action, fields = parse_adfs_form(html, base="https://sts.cuhk.edu.cn/")
+    assert "Password" in fields  # 选错(分步表单)则没有此字段
+    assert "pageid=paginated" not in action  # 不是分步表单的 action
+
+
+def test_login_clears_stale_cookies_before_authorize():
+    # 重登前必须清掉旧 cookie，否则残留的 SSO 会话会让 ADFS 直接跳过登录页(无表单)。
+    t = _login_transport("https://bb.cuhk.edu.cn:443/webapps/portal/execute/defaultTab")
+    t.import_cookies([{"name": "JSESSIONID", "value": "stale", "domain": "bb", "path": "/"}])
+    login(t, Credentials("u@link.cuhk.edu.cn", "pw"))
+    assert t.export_cookies() == []  # 旧 cookie 已清
+
+
 def test_build_login_post_fills_credentials():
     fields = {"UserName": "", "Password": "", "Kmsi": "true"}
     data = build_login_post(fields, "u@link.cuhk.edu.cn", "pw")

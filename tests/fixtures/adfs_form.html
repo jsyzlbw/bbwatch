@@ -1,6 +1,16 @@
 <html><body>
-<form method="post" action="/adfs/oauth2/authorize?client_id=x&response_type=code">
-  <input type="text" name="UserName" value=""/>
-  <input type="password" name="Password" value=""/>
+<!-- 真实 ADFS 登录页含两个 form：先是分步(只问用户名,无密码)的 loginFormPaginated,
+     后是真正的 loginForm(含 Password)。解析必须选含 Password 的那个。 -->
+<form method="post" id="loginFormPaginated"
+      action="/adfs/oauth2/authorize?client_id=x&response_type=code&pageid=paginated">
+  <input type="email" name="UserName" value=""/>
   <input type="hidden" name="Kmsi" value="true"/>
-</form></body></html>
+</form>
+<form method="post" id="loginForm"
+      action="/adfs/oauth2/authorize?client_id=x&response_type=code">
+  <input type="email" name="UserName" value=""/>
+  <input type="password" name="Password" value=""/>
+  <input type="hidden" name="AuthMethod" value="FormsAuthentication"/>
+  <input type="hidden" name="Kmsi" value="true"/>
+</form>
+</body></html>

@@ -107,3 +107,71 @@ def test_submitted_ungraded_and_format():
     out = format_pending(p)
     assert "HW2" in out and "待批改" in out
     assert "没有已提交" in format_pending([])
+
+
+def test_submitted_ungraded_excludes_scored_and_zero_point():
+    """BB 的 status 不可靠：NeedsGrading 但有分=已批改;0 分列=占位非作业。两者都不该进待批改。"""
+    from bbwatch.diff import diff_columns
+
+    s = Store(":memory:")
+    DUE = "2026-05-01T15:59:00.000Z"
+    cols = [
+        Column("_h1", "真待批改", DUE, score_possible=100),       # NeedsGrading + 无分 → 真待批改
+        Column("_h2", "已批改但状态怪", DUE, score_possible=100),  # NeedsGrading + 有分 → 实为已批改
+        Column("_h3", "Course Schedule Dates", DUE, score_possible=0),  # 0 分占位列 → 非作业
+    ]
+    statuses = {
+        "_h1": ColumnStatus("NeedsGrading", None),
+        "_h2": ColumnStatus("NeedsGrading", 100.0),
+        "_h3": ColumnStatus("NeedsGrading", None),
+    }
+    for ch in diff_columns({}, cols, statuses, cid="_c", scan_id=1, suppress=False):
+        s.apply_change(ch, NOW)
+    assert [p["name"] for p in s.submitted_ungraded()] == ["真待批改"]
+
+
+def test_actionable_excludes_zero_point_placeholder():
+    """0 分占位列(如 Course Schedule Dates)不是可跟踪作业,不进待完成。"""
+    from bbwatch.diff import diff_columns
+
+    s = Store(":memory:")
+    DUE = "2026-07-10T15:59:00.000Z"
+    cols = [
+        Column("_t1", "Real HW", DUE, score_possible=100),
+        Column("_t2", "Schedule Dates", DUE, score_possible=0),
+    ]
+    statuses = {"_t1": ColumnStatus("None", None), "_t2": ColumnStatus("None", None)}
+    for ch in diff_columns({}, cols, statuses, cid="_c", scan_id=1, suppress=False):
+        s.apply_change(ch, NOW)
+    assert [t["name"] for t in s.actionable_tasks()] == ["Real HW"]
+
+
+def test_tasks_expose_content_id_for_jump():
+    """跳转到具体作业页需要 content_id(uploadAssignment 深链)。"""
+    from bbwatch.diff import diff_columns
+
+    s = Store(":memory:")
+    cols = [
+        Column("_t1", "待完成HW", "2026-07-10T15:59:00.000Z", content_id="_618329_1", score_possible=100),
+        Column("_p1", "待批改HW", "2026-05-01T15:59:00.000Z", content_id="_638685_1", score_possible=100),
+    ]
+    statuses = {"_t1": ColumnStatus("None"), "_p1": ColumnStatus("NeedsGrading", None)}
+    for ch in diff_columns({}, cols, statuses, cid="_c", scan_id=1, suppress=False):
+        s.apply_change(ch, NOW)
+    assert s.actionable_tasks()[0]["content_id"] == "_618329_1"
+    assert s.submitted_ungraded()[0]["content_id"] == "_638685_1"
+
+
+def test_grading_backlog_excludes_scored():
+    """已出分的不算待批积压(不该催老师)。"""
+    from bbwatch.diff import diff_columns
+
+    s = Store(":memory:")
+    DUE = "2026-05-01T15:59:00.000Z"
+    cols = [Column("_h1", "有分", DUE, score_possible=100),
+            Column("_h2", "无分", DUE, score_possible=100)]
+    statuses = {"_h1": ColumnStatus("NeedsGrading", 90.0),
+                "_h2": ColumnStatus("NeedsGrading", None)}
+    for ch in diff_columns({}, cols, statuses, cid="_c", scan_id=1, suppress=False):
+        s.apply_change(ch, NOW)
+    assert [b["name"] for b in s.grading_backlog(NOW, days=14)] == ["无分"]

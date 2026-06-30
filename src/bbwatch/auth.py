@@ -21,9 +21,15 @@ BB_HOST = "bb.cuhk.edu.cn"
 
 def parse_adfs_form(html: str, base: str) -> tuple[str, dict]:
     soup = BeautifulSoup(html, "html.parser")
-    form = soup.find("form")
-    if not form:
+    forms = soup.find_all("form")
+    if not forms:
         raise AuthError("ADFS 登录页未找到表单（页面结构可能已变）")
+    # 新版 ADFS 同页含两个 form：分步表单(只问用户名,无密码)在前、真正登录表单(含 Password)在后。
+    # 必须选含 password 输入的那个，否则 POST 缺密码字段 → 登录无法完成。
+    form = next(
+        (f for f in forms if f.find("input", attrs={"type": "password"})),
+        forms[0],
+    )
     action = urljoin(base, form.get("action") or "")
     fields = {
         i.get("name"): (i.get("value") or "")
@@ -42,6 +48,10 @@ def build_login_post(fields: dict, username: str, password: str) -> dict:
 
 def login(transport: Transport, creds: Credentials) -> None:
     """走完 ADFS OAuth2，使 transport 的会话持有 BB cookie。失败抛 AuthError。"""
+    # 清掉可能残留的旧 cookie：否则半失效的 SSO 会话会让 ADFS 跳过登录页(返回无表单页)。
+    clear = getattr(transport, "clear_cookies", None)
+    if callable(clear):
+        clear()
     r1 = transport.request("GET", AUTHORIZE_URL)
     action, fields = parse_adfs_form(r1.text, base=r1.url or AUTHORIZE_URL)
     data = build_login_post(fields, creds.username, creds.password)

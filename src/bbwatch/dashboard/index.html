@@ -199,14 +199,14 @@
 
 <script>
 const DEMO = {tasks:[
-  {entity_key:"col:_a:_1",course:"MAT3007:Optimization_L01",name:"Homework 4",due_utc:isoIn(46),done:false},
-  {entity_key:"col:_b:_2",course:"DDA2001:Introduction to Data Science",name:"Mock Quiz",due_utc:isoIn(-120),done:false},
-  {entity_key:"col:_c:_3",course:"CSC3001:Discrete Mathematics",name:"Assignment 2",due_utc:isoIn(140),done:false},
-  {entity_key:"col:_d:_4",course:"STA2001H:Probability & Statistics",name:"Problem Set 5",due_utc:isoIn(18),done:true},
+  {entity_key:"col:_a:_1",course_id:"_a",content_id:"_1001_1",course:"MAT3007:Optimization_L01",name:"Homework 4",due_utc:isoIn(46),done:false},
+  {entity_key:"col:_b:_2",course_id:"_b",content_id:"_1002_1",course:"DDA2001:Introduction to Data Science",name:"Mock Quiz",due_utc:isoIn(-120),done:false},
+  {entity_key:"col:_c:_3",course_id:"_c",content_id:"_1003_1",course:"CSC3001:Discrete Mathematics",name:"Assignment 2",due_utc:isoIn(140),done:false},
+  {entity_key:"col:_d:_4",course_id:"_d",content_id:"_1004_1",course:"STA2001H:Probability & Statistics",name:"Problem Set 5",due_utc:isoIn(18),done:true},
 ], pending:[
-  {entity_key:"col:_e:_5",course:"MAT3007:Optimization_L01",name:"Homework 2",due_utc:isoIn(-24*20),waited_days:20},
-  {entity_key:"col:_f:_6",course:"MAT3350:Information Theory",name:"Assignment 1",due_utc:isoIn(-24*5),waited_days:5},
-  {entity_key:"col:_g:_7",course:"DDA2001:Introduction to Data Science",name:"Homework 3",due_utc:isoIn(-24*9),waited_days:9},
+  {entity_key:"col:_e:_5",course_id:"_e",content_id:"_1005_1",course:"MAT3007:Optimization_L01",name:"Homework 2",due_utc:isoIn(-24*20),waited_days:20},
+  {entity_key:"col:_f:_6",course_id:"_f",content_id:"_1006_1",course:"MAT3350:Information Theory",name:"Assignment 1",due_utc:isoIn(-24*5),waited_days:5},
+  {entity_key:"col:_g:_7",course_id:"_g",content_id:"_1007_1",course:"DDA2001:Introduction to Data Science",name:"Homework 3",due_utc:isoIn(-24*9),waited_days:9},
 ], hidden:[
   {entity_key:"col:_x:_9",course_id:"_x",course:"PED1201:Badminton",name:"体育打卡（老师不批）",due_utc:isoIn(-24*30)},
 ], last_scan:isoIn(-0.3), summary:"⏳ 3 项已交作业逾 2 周未出分（可催老师）", demo:true};
@@ -245,9 +245,17 @@ function pendingRow(t,i){
   </div>`;
 }
 
-// 跳转到 BB 该课成绩/作业页
+// 跳转到 BB：有 content_id 时深链到该作业的提交/批改页(Review Submission History)；
+// 否则退回该课 My Grades 列表。
 const BBHOST='https://bb.cuhk.edu.cn';
-function jumpUrl(t){const cid=t.course_id||String(t.entity_key||'').split(':')[1]||''; return `${BBHOST}/webapps/gradebook/do/student/viewGrades?course_id=${encodeURIComponent(cid)}`;}
+function jumpUrl(t){
+  const cid=t.course_id||String(t.entity_key||'').split(':')[1]||'';
+  const c=encodeURIComponent(cid);
+  if(t.content_id){
+    return `${BBHOST}/webapps/assignment/uploadAssignment?content_id=${encodeURIComponent(t.content_id)}&course_id=${c}&mode=view`;
+  }
+  return `${BBHOST}/webapps/gradebook/do/student/viewGrades?course_id=${c}`;
+}
 
 // 删除(隐藏)/恢复
 function localHide(key,h){

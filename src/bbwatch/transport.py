@@ -55,6 +55,9 @@ class FakeTransport:
     def import_cookies(self, cookies: list[dict]) -> None:
         self._cookies = list(cookies)
 
+    def clear_cookies(self) -> None:
+        self._cookies = []
+
     def request(self, method, url, *, data=None, headers=None, allow_redirects=True) -> Response:
         self.calls.append((method, url))
         key = (method, url)
@@ -114,6 +117,9 @@ class CurlCffiTransport:
             self._sess.cookies.set(
                 c["name"], c["value"], domain=c.get("domain") or "", path=c.get("path") or "/"
             )
+
+    def clear_cookies(self) -> None:
+        self._sess.cookies.clear()
 
     def download_to(self, url: str, path: str) -> int:
         tmp = str(path) + ".part"

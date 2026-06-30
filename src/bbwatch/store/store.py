@@ -240,6 +240,9 @@ class Store:
         for r in rows:
             if r["entity_key"] in hidden:
                 continue  # 用户已删除(隐藏)
+            payload = json.loads(r["payload_json"])
+            if payload.get("score_possible") == 0:
+                continue  # 0 分占位列(如 Course Schedule Dates)非真作业
             auto_done = (r["grade_status"] in ("NeedsGrading", "Graded")) or (
                 r["grade_score"] is not None
             )
@@ -248,12 +251,12 @@ class Store:
             ov = self._conn.execute(
                 "SELECT manual_done FROM task_override WHERE entity_key=?", (r["entity_key"],)
             ).fetchone()
-            payload = json.loads(r["payload_json"])
             out.append(
                 {
                     "entity_key": r["entity_key"],
                     "course_id": r["course_id"],
                     "course": payload.get("course_code") or r["course_id"],  # 人类可读课程代码
+                    "content_id": payload.get("content_id"),  # 深链到具体作业页
                     "name": payload.get("name"),
                     "due_utc": r["due_utc"],
                     "done": bool(ov and ov["manual_done"]),
@@ -331,6 +334,7 @@ class Store:
                     "entity_key": r["entity_key"],
                     "course_id": r["course_id"],
                     "course": p.get("course_code") or r["course_id"],
+                    "content_id": p.get("content_id"),
                     "name": p.get("name"),
                     "due_utc": r["due_utc"],
                 }
@@ -369,27 +373,32 @@ class Store:
         return [r["local_path"] for r in rows]
 
     def grading_backlog(self, now: str, days: int = 14) -> list[dict]:
-        """已交但久未出分(NeedsGrading 且截止已过 days 天)的作业，可催老师。"""
+        """已交但久未出分(确实无分数 且截止已过 days 天)的作业，可催老师。
+        排除已带分数(BB 的 NeedsGrading 不可靠)与 0 分占位列。"""
         cutoff = _add_seconds(now, -days * 86400)
         rows = self._conn.execute(
             "SELECT entity_key, payload_json, due_utc FROM seen_entity "
             "WHERE kind='column' AND archived=0 AND grade_status='NeedsGrading' "
-            "AND due_utc IS NOT NULL AND due_utc < ?",
+            "AND grade_score IS NULL AND due_utc IS NOT NULL AND due_utc < ?",
             (cutoff,),
         ).fetchall()
-        return [
-            {"entity_key": r["entity_key"], "name": json.loads(r["payload_json"]).get("name"),
-             "due_utc": r["due_utc"]}
-            for r in rows
-        ]
+        out: list[dict] = []
+        for r in rows:
+            p = json.loads(r["payload_json"])
+            if p.get("score_possible") == 0:
+                continue  # 0 分占位列非真作业
+            out.append({"entity_key": r["entity_key"], "name": p.get("name"), "due_utc": r["due_utc"]})
+        return out
 
     def submitted_ungraded(self) -> list[dict]:
-        """已提交但未出分(status=NeedsGrading)的作业，按截止升序。每项含 waited_days(交后等待天数)。"""
+        """已提交但**确实未出分**的作业，按截止升序。每项含 waited_days(交后等待天数)。
+        注意 BB 的 status 不可靠：NeedsGrading 却带分数即已批改 → 必须 grade_score 为空;
+        0 分占位列(如 Course Schedule Dates)非真作业 → 排除。"""
         from datetime import datetime, timezone
 
         rows = self._conn.execute(
             "SELECT * FROM seen_entity WHERE kind='column' AND archived=0 "
-            "AND grade_status='NeedsGrading' ORDER BY due_utc ASC"
+            "AND grade_status='NeedsGrading' AND grade_score IS NULL ORDER BY due_utc ASC"
         ).fetchall()
         hidden = self._hidden_keys()
         now_dt = datetime.now(timezone.utc)
@@ -398,6 +407,8 @@ class Store:
             if r["entity_key"] in hidden:
                 continue
             payload = json.loads(r["payload_json"])
+            if payload.get("score_possible") == 0:
+                continue  # 0 分占位列非真作业
             waited = None
             if r["due_utc"]:
                 waited = max(0, int((now_dt - parse_utc(r["due_utc"])).total_seconds() // 86400))
@@ -406,6 +417,7 @@ class Store:
                     "entity_key": r["entity_key"],
                     "course_id": r["course_id"],
                     "course": payload.get("course_code") or r["course_id"],
+                    "content_id": payload.get("content_id"),
                     "name": payload.get("name"),
                     "due_utc": r["due_utc"],
                     "waited_days": waited,
