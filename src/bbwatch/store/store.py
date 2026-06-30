@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 _SCHEMA = Path(__file__).parent / "schema.sql"
 
 
@@ -235,8 +235,11 @@ class Store:
             "SELECT * FROM seen_entity WHERE kind='column' AND archived=0 "
             "AND due_utc IS NOT NULL ORDER BY due_utc ASC"
         ).fetchall()
+        hidden = self._hidden_keys()
         out: list[dict] = []
         for r in rows:
+            if r["entity_key"] in hidden:
+                continue  # 用户已删除(隐藏)
             auto_done = (r["grade_status"] in ("NeedsGrading", "Graded")) or (
                 r["grade_score"] is not None
             )
@@ -297,6 +300,43 @@ class Store:
             (entity_key, 1 if done else 0, now),
         )
 
+    # ---------------- 删除/恢复（隐藏，回收站） ----------------
+    def _hidden_keys(self) -> set:
+        return {
+            r["entity_key"]
+            for r in self._conn.execute("SELECT entity_key FROM task_hidden").fetchall()
+        }
+
+    def set_hidden(self, entity_key: str, hidden: bool, now: str) -> None:
+        if hidden:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO task_hidden(entity_key, updated_at) VALUES(?, ?)",
+                (entity_key, now),
+            )
+        else:
+            self._conn.execute("DELETE FROM task_hidden WHERE entity_key=?", (entity_key,))
+
+    def hidden_tasks(self) -> list[dict]:
+        """已删除(隐藏)的作业，供回收站展示/恢复。按删除时间倒序。"""
+        rows = self._conn.execute(
+            "SELECT s.entity_key, s.course_id, s.due_utc, s.payload_json, h.updated_at "
+            "FROM task_hidden h JOIN seen_entity s ON s.entity_key = h.entity_key "
+            "WHERE s.kind='column' ORDER BY h.updated_at DESC"
+        ).fetchall()
+        out: list[dict] = []
+        for r in rows:
+            p = json.loads(r["payload_json"])
+            out.append(
+                {
+                    "entity_key": r["entity_key"],
+                    "course_id": r["course_id"],
+                    "course": p.get("course_code") or r["course_id"],
+                    "name": p.get("name"),
+                    "due_utc": r["due_utc"],
+                }
+            )
+        return out
+
     # ---------------- 下载登记（增量） ----------------
     def get_download(self, att_key: str) -> sqlite3.Row | None:
         return self._conn.execute(
@@ -351,9 +391,12 @@ class Store:
             "SELECT * FROM seen_entity WHERE kind='column' AND archived=0 "
             "AND grade_status='NeedsGrading' ORDER BY due_utc ASC"
         ).fetchall()
+        hidden = self._hidden_keys()
         now_dt = datetime.now(timezone.utc)
         out: list[dict] = []
         for r in rows:
+            if r["entity_key"] in hidden:
+                continue
             payload = json.loads(r["payload_json"])
             waited = None
             if r["due_utc"]:

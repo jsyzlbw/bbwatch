@@ -47,6 +47,27 @@ def test_mark_done_then_undone_roundtrip():
     assert len(s.outstanding_tasks()) == 1       # 撤销后重新计入
 
 
+def test_hide_and_restore():
+    s = Store(":memory:")
+    _seed(s, "_h1", "HW1", "None")
+    ek = s.actionable_tasks()[0]["entity_key"]
+    s.set_hidden(ek, True, NOW)
+    assert s.actionable_tasks() == []          # 删除后从清单消失
+    h = s.hidden_tasks()
+    assert len(h) == 1 and h[0]["entity_key"] == ek and h[0]["name"] == "HW1"
+    s.set_hidden(ek, False, NOW)               # 从回收站恢复
+    assert len(s.actionable_tasks()) == 1
+    assert s.hidden_tasks() == []
+
+
+def test_hidden_excludes_from_pending():
+    s = Store(":memory:")
+    _seed(s, "_h1", "HW1", "NeedsGrading")     # 已交待批改
+    ek = s.submitted_ungraded()[0]["entity_key"]
+    s.set_hidden(ek, True, NOW)
+    assert s.submitted_ungraded() == []        # 删除的也不在待批改
+
+
 def test_mark_done_out_of_range_raises():
     s = Store(":memory:")
     with pytest.raises(ValueError):

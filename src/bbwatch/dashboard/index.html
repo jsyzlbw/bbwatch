@@ -135,6 +135,16 @@
   .task.done{opacity:.5}
   .task.done .name{text-decoration:line-through; text-decoration-color:var(--faint); color:var(--muted)}
   .task.done .bar{background:var(--faint)!important}
+  /* 跳转链接 + 删除/恢复 */
+  a.name{display:block;color:inherit;text-decoration:none;cursor:pointer}
+  a.name:hover{text-decoration:underline;text-decoration-color:var(--muted);text-underline-offset:3px}
+  .del{width:26px;height:26px;border-radius:50%;border:1px solid transparent;background:transparent;color:var(--faint);
+    font-size:21px;line-height:.8;cursor:pointer;display:grid;place-items:center;transition:.2s;opacity:0}
+  .task:hover .del{opacity:1}
+  .del:hover{color:var(--coral);background:rgba(255,107,94,.12)}
+  .restore{font-family:var(--mono);font-size:12px;color:var(--teal);background:transparent;border:1px solid var(--line);
+    border-radius:9px;padding:6px 13px;cursor:pointer;transition:.2s}
+  .restore:hover{border-color:var(--teal);background:rgba(57,192,168,.12)}
 
   /* 已完成折叠 */
   .done-wrap{margin-top:18px}
@@ -197,6 +207,8 @@ const DEMO = {tasks:[
   {entity_key:"col:_e:_5",course:"MAT3007:Optimization_L01",name:"Homework 2",due_utc:isoIn(-24*20),waited_days:20},
   {entity_key:"col:_f:_6",course:"MAT3350:Information Theory",name:"Assignment 1",due_utc:isoIn(-24*5),waited_days:5},
   {entity_key:"col:_g:_7",course:"DDA2001:Introduction to Data Science",name:"Homework 3",due_utc:isoIn(-24*9),waited_days:9},
+], hidden:[
+  {entity_key:"col:_x:_9",course_id:"_x",course:"PED1201:Badminton",name:"体育打卡（老师不批）",due_utc:isoIn(-24*30)},
 ], last_scan:isoIn(-0.3), summary:"⏳ 3 项已交作业逾 2 周未出分（可催老师）", demo:true};
 function isoIn(h){return new Date(Date.now()+h*3600*1000).toISOString().replace('Z','.000Z')}
 
@@ -223,10 +235,47 @@ function pendingRow(t,i){
   return `<div class="task calm" style="--d:${.05*i+.05}s">
     <div class="bar" style="background:var(--teal)"></div>
     <div class="main">
-      <div class="name">${esc(t.name)}</div>
+      <a class="name" href="${jumpUrl(t)}" target="_blank" rel="noopener">${esc(t.name)}</a>
       <div class="meta"><span class="chip" style="background:hsl(${hu} 70% 60%)">${esc(courseShort(t.course))}</span><span class="when">${fmt(due)} 截止${wtag?` · ${wtag}`:''}</span></div>
     </div>
-    <div class="right"><div class="rel" style="color:var(--teal);font-size:17px">待批改</div></div>
+    <div class="right">
+      <div class="rel" style="color:var(--teal);font-size:17px">待批改</div>
+      <button class="del" title="删除（可在回收站恢复）" onclick="hide('${t.entity_key}',true)">×</button>
+    </div>
+  </div>`;
+}
+
+// 跳转到 BB 该课成绩/作业页
+const BBHOST='https://bb.cuhk.edu.cn';
+function jumpUrl(t){const cid=t.course_id||String(t.entity_key||'').split(':')[1]||''; return `${BBHOST}/webapps/gradebook/do/student/viewGrades?course_id=${encodeURIComponent(cid)}`;}
+
+// 删除(隐藏)/恢复
+function localHide(key,h){
+  if(h){
+    const it=(STATE.tasks||[]).find(x=>x.entity_key===key)||(STATE.pending||[]).find(x=>x.entity_key===key);
+    STATE.tasks=(STATE.tasks||[]).filter(x=>x.entity_key!==key);
+    STATE.pending=(STATE.pending||[]).filter(x=>x.entity_key!==key);
+    if(it){STATE.hidden=STATE.hidden||[]; if(!STATE.hidden.find(x=>x.entity_key===key))STATE.hidden.unshift(it);}
+  }else{
+    const it=(STATE.hidden||[]).find(x=>x.entity_key===key);
+    STATE.hidden=(STATE.hidden||[]).filter(x=>x.entity_key!==key);
+    if(it){STATE.tasks=STATE.tasks||[]; if(!STATE.tasks.find(x=>x.entity_key===key))STATE.tasks.push(it);}
+  }
+}
+async function hide(key,h){
+  localHide(key,h); render();
+  try{await fetch('/api/hide',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entity_key:key,hidden:h})}); load();}
+  catch(e){toast(h?'已删除（离线演示）':'已恢复（离线演示）')}
+}
+function hiddenRow(t,i){
+  const due=parseUTC(t.due_utc); const hu=hue(t.course);
+  return `<div class="task done" style="--d:${.05*i}s;opacity:.65">
+    <div class="bar" style="background:var(--faint)"></div>
+    <div class="main">
+      <a class="name" href="${jumpUrl(t)}" target="_blank" rel="noopener">${esc(t.name)}</a>
+      <div class="meta"><span class="chip" style="background:hsl(${hu} 35% 52%)">${esc(courseShort(t.course))}</span><span class="when">${due?fmt(due):''}</span></div>
+    </div>
+    <div class="right"><button class="restore" onclick="hide('${t.entity_key}',false)">恢复</button></div>
   </div>`;
 }
 
@@ -250,7 +299,7 @@ function taskRow(t,i){
   return `<div class="task ${cl} ${t.done?'done':''}" style="--d:${.06*i+.12}s">
     <div class="bar"></div>
     <div class="main">
-      <div class="name">${esc(t.name)}</div>
+      <a class="name" href="${jumpUrl(t)}" target="_blank" rel="noopener">${esc(t.name)}</a>
       <div class="meta">
         <span class="chip" style="${chip}">${esc(courseShort(t.course))}</span>
         <span class="when">${fmt(due)}</span>
@@ -258,6 +307,7 @@ function taskRow(t,i){
     </div>
     <div class="right">
       ${t.done?'':`<div class="rel">${r.n}<small>${r.u}</small></div>`}
+      <button class="del" title="删除（可在回收站恢复）" onclick="hide('${t.entity_key}',true)">×</button>
       <div class="check" role="checkbox" aria-checked="${t.done}" onclick="toggle('${t.entity_key}',${!t.done})">
         <svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
       </div>
@@ -271,6 +321,7 @@ function render(){
   const todo=tasks.filter(t=>!t.done).sort((a,b)=>parseUTC(a.due_utc)-parseUTC(b.due_utc));
   const done=tasks.filter(t=>t.done).sort((a,b)=>parseUTC(b.due_utc)-parseUTC(a.due_utc));
   const pend=(STATE.pending||[]);
+  const hid=(STATE.hidden||[]);
 
   // hero
   const hero=$('#hero');
@@ -316,6 +367,12 @@ function render(){
       <svg class="arw" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 1l4 4-4 4"/></svg>
       已完成 · ${done.length}</div>
       <div class="done-body">${done.map((t,i)=>taskRow(t,i)).join('')}</div></div>`;
+  }
+  if(hid.length){
+    html+=`<div class="done-wrap" id="hw"><div class="done-head" onclick="document.getElementById('hw').classList.toggle('open')">
+      <svg class="arw" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 1l4 4-4 4"/></svg>
+      🗑 回收站 · ${hid.length}</div>
+      <div class="done-body">${hid.map((t,i)=>hiddenRow(t,i)).join('')}</div></div>`;
   }
   $('#board').innerHTML=html;
 

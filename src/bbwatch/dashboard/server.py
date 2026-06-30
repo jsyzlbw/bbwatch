@@ -25,6 +25,7 @@ class DashboardState:
             return {
                 "tasks": store.actionable_tasks(),
                 "pending": store.submitted_ungraded(),  # 已提交待批改
+                "hidden": store.hidden_tasks(),          # 已删除(回收站)
                 "last_scan": store.last_scan_time(),
                 "summary": build_session_summary(store, self._now()),
             }
@@ -35,6 +36,14 @@ class DashboardState:
         store = self._sf()
         try:
             store.mark_manual_done(entity_key, done, self._now())
+            return {"ok": True}
+        finally:
+            store.close()
+
+    def set_hidden(self, entity_key: str, hidden: bool) -> dict:
+        store = self._sf()
+        try:
+            store.set_hidden(entity_key, hidden, self._now())
             return {"ok": True}
         finally:
             store.close()
@@ -75,6 +84,8 @@ def make_handler(state: DashboardState):
                 body = {}
             if self.path == "/api/done":
                 self._json(state.set_done(body.get("entity_key"), bool(body.get("done"))))
+            elif self.path == "/api/hide":
+                self._json(state.set_hidden(body.get("entity_key"), bool(body.get("hidden"))))
             elif self.path == "/api/scan":
                 self._json(state.trigger_scan())
             else:

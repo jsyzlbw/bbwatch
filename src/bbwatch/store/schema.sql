@@ -69,6 +69,12 @@ CREATE TABLE IF NOT EXISTS download (
 );
 CREATE INDEX IF NOT EXISTS idx_download_path ON download(local_path);
 
+-- 用户手动"删除"(隐藏)的作业；可从回收站恢复。仅影响展示，不影响 diff 去重。
+CREATE TABLE IF NOT EXISTS task_hidden (
+    entity_key TEXT PRIMARY KEY,
+    updated_at TEXT
+);
+
 -- 认证熔断状态(单行 id=1)：连续凭据失败达阈值即熔断，防学校账号锁定(附录 C.3)。
 CREATE TABLE IF NOT EXISTS auth_state (
     id                 INTEGER PRIMARY KEY CHECK (id = 1),
