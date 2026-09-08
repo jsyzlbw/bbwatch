@@ -176,6 +176,18 @@ def resolve_setup_credentials(env: dict, stdin_text: str | None = None):
     return None, None
 
 
+def reset_local_auth(paths: AppPaths) -> None:
+    """保存新凭据后清除旧会话与认证失败记录，保留课程和任务数据。"""
+    paths.ensure_dirs()
+    store = Store(paths.db_path)
+    try:
+        # 先使旧账号的 cookie 失效；无法清除时保留熔断状态。
+        paths.session_path.unlink(missing_ok=True)
+        store.reset_auth_failures()
+    finally:
+        store.close()
+
+
 def cmd_setup(args) -> int:
     import os
 
@@ -185,7 +197,14 @@ def cmd_setup(args) -> int:
         username = input("学校账号(形如 学号@link.cuhk.edu.cn): ").strip()
         password = getpass.getpass("密码（输入不回显）: ")
     store_credentials(username, password)
-    print("已存入 macOS 钥匙串。可运行 bbwatch whoami 验证。")
+    try:
+        reset_local_auth(AppPaths())
+    except Exception as exc:
+        raise RuntimeError(
+            f"凭据已保存，但旧登录状态重置失败：{exc}；"
+            "请检查本机数据目录后重新运行 bbwatch setup。"
+        ) from exc
+    print("已存入 macOS 钥匙串，并重置旧登录状态。请运行 bbwatch whoami 验证账号密码。")
     return 0
 
 

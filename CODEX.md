@@ -74,6 +74,26 @@ python3 scripts/install_codex.py --codex /opt/homebrew/bin/codex
 
 安装成功不代表学校登录成功；首次扫描之前，本地空清单也不等于学校没有作业。
 
+### 登录失败或提示“认证连续失败已熔断”
+
+连续 **3 次账号或密码认证失败**后，bbwatch 会暂停新的登录尝试 **1 小时**。先核对账号和密码，再在本机终端重新配置：
+
+```bash
+~/.local/bin/bbwatch setup
+~/.local/bin/bbwatch whoami
+```
+
+`setup` 成功保存凭据后，会清零失败计数、解除本地暂停，并清除旧登录会话。**这不代表密码已验证**；接着用 `whoami` 验证新凭据，显示已登录后再扫描。若仍然失败，先检查凭据，不要反复尝试登录或循环运行这两条命令。
+
+如果旧版本重新配置后仍提示熔断，在最初下载的仓库目录中更新并重新安装，再执行上面的两步：
+
+```bash
+git pull --ff-only
+python3 scripts/install_codex.py
+```
+
+更新时沿用初次安装的 Python 版本及 `--codex` 路径；详见[更新、检查与移除](#更新检查与移除)。
+
 ## 3. 新建 Codex 任务，开始对话
 
 **新建一个 Codex 任务**加载新插件。可以直接说：
