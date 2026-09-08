@@ -1,415 +1,1584 @@
 <!doctype html>
-<html lang="zh">
-<head>
-<meta charset="utf-8">
-<title>bbwatch · 任务台</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script>
-  // 早期设定主题，避免切换闪烁：本地记忆优先，否则跟随系统
-  (function(){try{
-    var t=localStorage.getItem('bbwatch-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');
-    document.documentElement.setAttribute('data-theme',t);
-  }catch(e){document.documentElement.setAttribute('data-theme','dark');}})();
-</script>
-<style>
-  :root{
-    --serif:"Instrument Serif",ui-serif,Georgia,serif;
-    --sans:"Hanken Grotesk",ui-sans-serif,system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
-    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
-  }
-  /* 夜晚(默认) */
-  :root, :root[data-theme="dark"]{
-    --ink:#0a0c10;
-    --panel:rgba(255,255,255,.035); --panel-hi:rgba(255,255,255,.06);
-    --line:rgba(255,255,255,.09); --line-hi:rgba(255,255,255,.16);
-    --text:#ece9e3; --muted:#8b909c; --faint:#5b606c;
-    --amber:#f6b24b; --coral:#ff6b5e; --rose:#ff4d6d; --gold:#e7c85a;
-    --mint:#54e3a6; --teal:#39c0a8;
-    --glow1:rgba(246,178,75,.10); --glow2:rgba(57,192,168,.08); --glow3:rgba(255,107,94,.06);
-    --grain:.045; --toast-bg:#16191f; --shadow:0 12px 40px rgba(0,0,0,.5);
-  }
-  /* 白天(暖纸) */
-  :root[data-theme="light"]{
-    --ink:#f4f1ea;
-    --panel:rgba(28,24,16,.028); --panel-hi:rgba(28,24,16,.055);
-    --line:rgba(28,24,16,.11); --line-hi:rgba(28,24,16,.2);
-    --text:#221f18; --muted:#6c665b; --faint:#a39c8c;
-    --amber:#b67708; --coral:#d6453a; --rose:#cf3354; --gold:#a07614;
-    --mint:#129a63; --teal:#0e8f82;
-    --glow1:rgba(246,178,75,.22); --glow2:rgba(57,192,168,.13); --glow3:rgba(255,107,94,.10);
-    --grain:.03; --toast-bg:#ffffff; --shadow:0 14px 40px rgba(90,78,55,.16);
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
-  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
-  body{
-    font-family:var(--sans); color:var(--text); background:var(--ink);
-    min-height:100vh; line-height:1.5; letter-spacing:.01em;
-    background-image:
-      radial-gradient(1100px 600px at 12% -8%, var(--glow1), transparent 60%),
-      radial-gradient(900px 700px at 100% 8%, var(--glow2), transparent 55%),
-      radial-gradient(800px 800px at 50% 120%, var(--glow3), transparent 60%);
-    background-attachment:fixed;
-    transition:background-color .4s ease, color .4s ease;
-  }
-  /* 颗粒质感 */
-  body::before{
-    content:""; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:var(--grain);
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
-  .wrap{position:relative; z-index:1; max-width:760px; margin:0 auto; padding:38px 22px 80px}
-
-  /* 顶栏 */
-  .top{display:flex; align-items:center; justify-content:space-between; margin-bottom:34px}
-  .brand{display:flex; align-items:baseline; gap:10px}
-  .brand b{font-weight:700; font-size:18px; letter-spacing:-.01em}
-  .brand .dot{width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 12px var(--mint);align-self:center}
-  .brand small{font-family:var(--mono); font-size:11px; color:var(--faint); letter-spacing:.14em; text-transform:uppercase}
-  .scan{
-    font-family:var(--mono); font-size:12px; letter-spacing:.06em; color:var(--text);
-    background:var(--panel); border:1px solid var(--line); border-radius:999px;
-    padding:9px 16px; cursor:pointer; display:flex; align-items:center; gap:8px;
-    transition:.25s; backdrop-filter:blur(8px);
-  }
-  .scan:hover{background:var(--panel-hi); border-color:var(--line-hi); transform:translateY(-1px)}
-  .scan .ic{width:13px;height:13px;display:inline-block}
-  .scan.spin .ic{animation:spin 1s linear infinite}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  .controls{display:flex; align-items:center; gap:10px}
-  .icon-btn{width:38px;height:38px;border-radius:999px;background:var(--panel);border:1px solid var(--line);
-    color:var(--text);cursor:pointer;display:grid;place-items:center;transition:.25s;backdrop-filter:blur(8px)}
-  .icon-btn:hover{background:var(--panel-hi);border-color:var(--line-hi);transform:translateY(-1px) rotate(-8deg)}
-  .icon-btn svg{width:16px;height:16px}
-
-  /* 主标题(editorial hero) */
-  .hero{margin-bottom:40px; opacity:0; animation:rise .7s .05s cubic-bezier(.2,.7,.2,1) forwards}
-  .hero .lead{font-family:var(--mono); font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); margin-bottom:8px}
-  .hero .big{font-family:var(--serif); font-size:clamp(48px,9vw,80px); line-height:.94; letter-spacing:-.02em; display:flex; align-items:baseline; gap:.18em}
-  .hero .big .u{font-size:.38em; color:var(--muted); font-style:italic}
-  .hero .sub{margin-top:16px; color:var(--muted); font-size:16.5px}
-  .hero .sub .accent{color:var(--amber); font-style:italic; font-family:var(--serif); font-size:19px}
-  .hero.allclear .big{color:var(--mint)}
-
-  /* 区段标签 */
-  .seg{display:flex; align-items:center; gap:12px; margin:30px 2px 14px}
-  .seg span{font-family:var(--mono); font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted)}
-  .seg .rule{flex:1; height:1px; background:linear-gradient(90deg,var(--line),transparent)}
-
-  /* 任务行 */
-  .list{display:flex; flex-direction:column; gap:10px}
-  .task{
-    position:relative; display:grid; grid-template-columns:4px 1fr auto; gap:0 16px; align-items:center;
-    background:var(--panel); border:1px solid var(--line); border-radius:16px;
-    padding:16px 18px 16px 16px; overflow:hidden;
-    transition:transform .2s, border-color .2s, background .2s, opacity .35s;
-    opacity:0; animation:rise .55s var(--d,0s) cubic-bezier(.2,.7,.2,1) forwards;
-  }
-  .task:hover{transform:translateY(-2px); border-color:var(--line-hi); background:var(--panel-hi)}
-  .task .bar{grid-row:1/3; align-self:stretch; width:4px; border-radius:4px; background:var(--faint)}
-  .task.ov .bar{background:linear-gradient(var(--rose),var(--coral))}
-  .task.ur .bar{background:linear-gradient(var(--coral),var(--amber))}
-  .task.soon .bar{background:var(--gold)}
-  .task.calm .bar{background:var(--teal)}
-  .task .main{min-width:0}
-  .task .name{font-size:17px; font-weight:600; letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-  .task .meta{display:flex; align-items:center; gap:10px; margin-top:7px; flex-wrap:wrap}
-  .chip{font-family:var(--mono); font-size:11px; letter-spacing:.02em; padding:3px 9px; border-radius:7px;
-    color:#0a0c10; font-weight:500; white-space:nowrap}
-  .task .when{font-family:var(--mono); font-size:12px; color:var(--muted)}
-  .task .right{display:flex; align-items:center; gap:16px}
-  .rel{font-family:var(--serif); font-style:italic; font-size:20px; line-height:1; text-align:right; white-space:nowrap}
-  .task.ov .rel{color:var(--coral)} .task.ur .rel{color:var(--amber)}
-  .task.soon .rel{color:var(--gold)} .task.calm .rel{color:var(--muted)}
-  .rel small{display:block; font-family:var(--mono); font-style:normal; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); margin-top:3px}
-
-  /* 自定义勾选 */
-  .check{width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line-hi); cursor:pointer; flex:none;
-    display:grid; place-items:center; transition:.25s; background:transparent}
-  .check:hover{border-color:var(--mint)}
-  .check svg{width:14px;height:14px;stroke:var(--ink); stroke-width:3.2; fill:none; stroke-linecap:round; stroke-linejoin:round;
-    stroke-dasharray:22; stroke-dashoffset:22; transition:stroke-dashoffset .3s .05s}
-  .task.done .check{background:var(--mint); border-color:var(--mint); box-shadow:0 0 16px rgba(84,227,166,.4)}
-  .task.done .check svg{stroke-dashoffset:0}
-  .task.done{opacity:.5}
-  .task.done .name{text-decoration:line-through; text-decoration-color:var(--faint); color:var(--muted)}
-  .task.done .bar{background:var(--faint)!important}
-  /* 跳转链接 + 删除/恢复 */
-  a.name{display:block;color:inherit;text-decoration:none;cursor:pointer}
-  a.name:hover{text-decoration:underline;text-decoration-color:var(--muted);text-underline-offset:3px}
-  .del{width:26px;height:26px;border-radius:50%;border:1px solid transparent;background:transparent;color:var(--faint);
-    font-size:21px;line-height:.8;cursor:pointer;display:grid;place-items:center;transition:.2s;opacity:0}
-  .task:hover .del{opacity:1}
-  .del:hover{color:var(--coral);background:rgba(255,107,94,.12)}
-  .restore{font-family:var(--mono);font-size:12px;color:var(--teal);background:transparent;border:1px solid var(--line);
-    border-radius:9px;padding:6px 13px;cursor:pointer;transition:.2s}
-  .restore:hover{border-color:var(--teal);background:rgba(57,192,168,.12)}
-
-  /* 已完成折叠 */
-  .done-wrap{margin-top:18px}
-  .done-head{display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--muted);font-family:var(--mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;user-select:none;padding:8px 2px}
-  .done-head:hover{color:var(--muted)}
-  .done-head .arw{transition:.25s} .done-wrap.open .done-head .arw{transform:rotate(90deg)}
-  .done-body{display:none;flex-direction:column;gap:10px;margin-top:8px} .done-wrap.open .done-body{display:flex}
-
-  /* 空状态 */
-  .empty{text-align:center;padding:30px 0 10px;opacity:0;animation:rise .6s .1s forwards}
-  .empty .mk{font-family:var(--serif);font-size:72px;color:var(--mint);line-height:1}
-  .empty p{color:var(--muted);margin-top:12px;font-size:16.5px}
-
-  /* 页脚 */
-  .foot{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
-  .foot .l{font-family:var(--mono);font-size:13.5px;color:var(--muted);letter-spacing:.03em}
-  .foot .backlog{color:var(--teal);font-family:var(--sans);font-weight:600;cursor:pointer;text-decoration:none}
-  .foot .backlog:hover{color:var(--mint)}
-  .stale{display:none;align-items:center;gap:8px;background:rgba(246,178,75,.08);border:1px solid rgba(246,178,75,.25);color:var(--amber);border-radius:10px;padding:9px 13px;font-size:13px;margin-bottom:18px}
-  .stale.show{display:flex;animation:rise .5s forwards}
-
-  @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
-  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--toast-bg);border:1px solid var(--line-hi);color:var(--text);padding:11px 18px;border-radius:12px;font-size:13px;opacity:0;transition:.3s;z-index:9;box-shadow:var(--shadow)}
-  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <div class="top">
-    <div class="brand"><span class="dot"></span><b>bbwatch</b><small>任务台</small></div>
-    <div class="controls">
-      <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="切换日间 / 夜间" aria-label="切换主题"></button>
-      <button class="scan" id="scanBtn" onclick="doScan()">
-        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v5h-5"/></svg>
-        <span id="scanTxt">扫描</span>
-      </button>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="bbwatch 学习清单：整理 Blackboard 作业、截止时间与批改进度。"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <title>bbwatch · 课程任务</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2040%2040%22%3E%3Crect%20width%3D%2240%22%20height%3D%2240%22%20rx%3D%2210%22%20fill%3D%22%2334594d%22/%3E%3Cg%20transform%3D%22translate%288%208%29%22%20fill%3D%22none%22%20stroke%3D%22%23f7f8f5%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%205C9%203%206%203%203%204v15c3-1%206-1%209%201%203-2%206-2%209-1V4c-3-1-6-1-9%201Zm0%200v15%22/%3E%3C/g%3E%3C/svg%3E"
+    />
+    <script>
+      (function () {
+        let theme;
+        try {
+          theme = localStorage.getItem("bbwatch-theme");
+        } catch (_) {}
+        if (theme !== "light" && theme !== "dark") {
+          theme = matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+        }
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+    <style>
+      :root {
+        --canvas: #f7f8f5;
+        --surface: #fff;
+        --soft: #eef1ed;
+        --hover: #f5f7f3;
+        --text: #242c28;
+        --muted: #656e68;
+        --faint: #69726c;
+        --line: #e3e8e1;
+        --accent: #34594d;
+        --accent-soft: #e9f0e9;
+        --accent-text: #34594d;
+        --danger: #ad5148;
+        --danger-soft: #f8eeeb;
+        --amber: #926224;
+        --amber-soft: #f7f0e3;
+        --button: #2b4036;
+        --button-text: #fff;
+        --focus: #47735f;
+        --sans:
+          -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
+          "PingFang SC", "Microsoft YaHei", sans-serif;
+        --serif: Georgia, "Songti SC", "Noto Serif CJK SC", serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        color-scheme: light;
+      }
+      :root[data-theme="dark"] {
+        --canvas: #171c19;
+        --surface: #1d2420;
+        --soft: #242e27;
+        --hover: #232b25;
+        --text: #e8ede5;
+        --muted: #a6b1a8;
+        --faint: #909e93;
+        --line: #323d34;
+        --accent: #b2cab6;
+        --accent-soft: #2a3a2e;
+        --accent-text: #bed4c2;
+        --danger: #e3a298;
+        --danger-soft: #382a27;
+        --amber: #d9bb84;
+        --amber-soft: #353024;
+        --button: #c9d9c8;
+        --button-text: #203328;
+        --focus: #c0d7c4;
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        background: var(--canvas);
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+      button,
+      a {
+        -webkit-tap-highlight-color: transparent;
+      }
+      button {
+        font: inherit;
+        cursor: pointer;
+      }
+      a {
+        color: inherit;
+      }
+      button:disabled {
+        cursor: wait;
+        opacity: 0.55;
+      }
+      button,
+      a,
+      summary {
+        touch-action: manipulation;
+      }
+      :focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 4px;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      .skip {
+        position: fixed;
+        left: 20px;
+        top: -80px;
+        z-index: 5;
+        padding: 12px 18px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+      }
+      .skip:focus {
+        top: 12px;
+      }
+      .wrap {
+        width: min(1120px, 100%);
+        margin: 0 auto;
+        padding: 0 36px;
+      }
+      .top {
+        min-height: 100px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        border-bottom: 1px solid var(--line);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .brand-mark {
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        border-radius: 9px;
+        background: var(--accent);
+        color: var(--canvas);
+      }
+      .brand-mark svg {
+        width: 20px;
+        height: 20px;
+      }
+      .brand-name {
+        font-size: 20px;
+        font-weight: 650;
+        letter-spacing: -0.7px;
+      }
+      .brand-caption {
+        border-left: 1px solid var(--line);
+        margin-left: 8px;
+        padding-left: 20px;
+        font-size: 12px;
+        color: var(--muted);
+        letter-spacing: 0.06em;
+      }
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .portal {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--muted);
+        text-decoration: none;
+        min-height: 44px;
+        padding: 0 8px;
+      }
+      .portal:hover {
+        color: var(--accent);
+      }
+      .icon {
+        width: 18px;
+        height: 18px;
+        display: block;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        flex: none;
+      }
+      .icon-btn {
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--muted);
+        background: transparent;
+      }
+      .icon-btn:hover {
+        color: var(--text);
+        background: var(--soft);
+      }
+      .scan {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        min-height: 44px;
+        border: 1px solid transparent;
+        padding: 0 17px;
+        border-radius: 8px;
+        background: var(--button);
+        color: var(--button-text);
+        font-size: 13px;
+        font-weight: 550;
+        letter-spacing: 0.02em;
+      }
+      .scan:hover:not(:disabled) {
+        filter: brightness(1.1);
+      }
+      button:active:not(:disabled) {
+        transform: translateY(1px);
+      }
+      .spin .icon {
+        animation: spin 1.2s linear infinite;
+      }
+      .hero {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 32px;
+        margin: 58px 0 38px;
+      }
+      .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+        letter-spacing: 0.16em;
+        color: var(--muted);
+        margin: 0 0 12px;
+      }
+      .eyebrow::before {
+        content: "";
+        width: 18px;
+        height: 1px;
+        background: var(--accent);
+      }
+      h1 {
+        font-size: clamp(32px, 4vw, 42px);
+        font-weight: 500;
+        letter-spacing: -0.05em;
+        line-height: 1.35;
+        margin: 0;
+      }
+      .intro {
+        margin: 12px 0 0;
+        font-size: 13px;
+        color: var(--muted);
+        letter-spacing: 0.02em;
+      }
+      .metrics {
+        display: flex;
+        align-items: baseline;
+        gap: 36px;
+        margin: 0;
+        padding: 0 4px 0 24px;
+      }
+      .metric {
+        display: flex;
+        flex-direction: column-reverse;
+        gap: 6px;
+      }
+      .metric dt {
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        color: var(--muted);
+      }
+      .metric dd {
+        margin: 0;
+        font-family: var(--serif);
+        font-size: 42px;
+        font-weight: 400;
+        line-height: 1;
+        letter-spacing: -0.05em;
+        font-variant-numeric: tabular-nums;
+      }
+      .metric:first-child dd {
+        font-size: 64px;
+        color: var(--accent);
+      }
+      .deadline {
+        display: grid;
+        grid-template-columns: 36px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 16px;
+        padding: 21px 24px;
+        background: var(--accent-soft);
+        border-radius: 10px;
+        margin-bottom: 32px;
+      }
+      .deadline-symbol {
+        color: var(--accent);
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border: 1px solid var(--accent);
+        border-radius: 8px;
+        opacity: 0.8;
+      }
+      .deadline-label {
+        margin: 0 0 2px;
+        color: var(--accent-text);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+      }
+      .deadline-name {
+        font-size: 14px;
+        font-weight: 500;
+        overflow-wrap: anywhere;
+      }
+      .deadline-name span {
+        font-size: 12px;
+        margin-right: 10px;
+        color: var(--accent-text);
+        font-weight: 400;
+      }
+      .deadline-time {
+        text-align: right;
+        color: var(--accent-text);
+        font-size: 16px;
+        white-space: nowrap;
+        font-weight: 500;
+      }
+      .deadline-time small {
+        display: block;
+        font-size: 11px;
+        font-weight: 400;
+        opacity: 0.85;
+        margin-top: 2px;
+      }
+      .notice {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 0 0 24px;
+        padding: 13px 16px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .notice.error {
+        color: var(--danger);
+        background: var(--danger-soft);
+        border-color: transparent;
+      }
+      .notice.warning {
+        color: var(--amber);
+        background: var(--amber-soft);
+        border-color: transparent;
+      }
+      .notice-text {
+        flex: 1;
+      }
+      .text-btn {
+        background: none;
+        border: 0;
+        color: inherit;
+        padding: 6px 4px;
+        min-height: 36px;
+        font-size: 12px;
+        text-decoration: underline;
+        text-underline-offset: 4px;
+        white-space: nowrap;
+      }
+      .section-heading {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin: 0 0 15px;
+      }
+      .section-heading h2 {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0;
+        font-size: 14px;
+        font-weight: 550;
+        letter-spacing: 0.025em;
+      }
+      .count {
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+        min-width: 24px;
+        height: 23px;
+        padding: 0 6px;
+        border-radius: 5px;
+        background: var(--soft);
+        color: var(--muted);
+        font-size: 11px;
+        font-family: var(--mono);
+        font-weight: 400;
+      }
+      .sort-label {
+        color: var(--faint);
+        font-size: 11px;
+        letter-spacing: 0.02em;
+      }
+      .list {
+        border: 1px solid var(--line);
+        background: var(--surface);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .task {
+        display: grid;
+        grid-template-columns: 36px minmax(0, 1fr) 135px 112px 32px;
+        align-items: center;
+        gap: 18px;
+        min-height: 102px;
+        padding: 21px 23px;
+      }
+      .task + .task {
+        border-top: 1px solid var(--line);
+      }
+      .task:hover {
+        background: var(--hover);
+      }
+      .task.is-saving {
+        background: var(--hover);
+      }
+      .task .main {
+        min-width: 0;
+      }
+      .name {
+        display: block;
+        width: fit-content;
+        max-width: 100%;
+        font-size: 15px;
+        font-weight: 520;
+        line-height: 1.5;
+        text-decoration: none;
+        overflow-wrap: anywhere;
+      }
+      .name:hover {
+        color: var(--accent);
+        text-decoration: underline;
+        text-underline-offset: 4px;
+      }
+      .meta {
+        margin-top: 7px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        flex-wrap: wrap;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .chip {
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 1px 6px;
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 10px;
+        line-height: 1.65;
+        letter-spacing: 0.01em;
+      }
+      .meta-note {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .due {
+        font-size: 12px;
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .due small {
+        display: block;
+        font-size: 11px;
+        margin-top: 3px;
+        color: var(--faint);
+      }
+      .status {
+        justify-self: start;
+        padding: 4px 8px;
+        border-radius: 5px;
+        font-size: 11px;
+        line-height: 1.5;
+        font-weight: 400;
+        color: var(--muted);
+        background: var(--soft);
+        white-space: nowrap;
+      }
+      .ov .status {
+        color: var(--danger);
+        background: var(--danger-soft);
+      }
+      .ur .status,
+      .soon .status {
+        color: var(--amber);
+        background: var(--amber-soft);
+      }
+      .status small {
+        display: block;
+        font-size: 10px;
+      }
+      .pending .status {
+        color: var(--accent-text);
+        background: var(--accent-soft);
+      }
+      .check {
+        appearance: none;
+        width: 36px;
+        height: 44px;
+        padding: 0;
+        display: grid;
+        place-items: center;
+        border: 0;
+        color: var(--muted);
+        background: transparent;
+      }
+      .check-shape {
+        width: 22px;
+        height: 22px;
+        border: 1.3px solid var(--line);
+        border-color: var(--faint);
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+      }
+      .check:hover .check-shape {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+      }
+      .check .icon {
+        width: 13px;
+        height: 13px;
+        opacity: 0;
+        stroke-width: 2.4;
+      }
+      .check[aria-checked="true"] .check-shape {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--canvas);
+      }
+      .check[aria-checked="true"] .icon {
+        opacity: 1;
+      }
+      .row-symbol {
+        display: grid;
+        place-items: center;
+        width: 36px;
+        color: var(--faint);
+      }
+      .row-symbol .icon {
+        width: 19px;
+        height: 19px;
+      }
+      .done .name {
+        color: var(--muted);
+        text-decoration: line-through;
+        text-decoration-color: var(--faint);
+      }
+      .del {
+        width: 32px;
+        min-height: 44px;
+        border: 0;
+        padding: 0;
+        background: transparent;
+        color: var(--faint);
+        display: grid;
+        place-items: center;
+        border-radius: 5px;
+      }
+      .del .icon {
+        width: 16px;
+        height: 16px;
+      }
+      .del:hover {
+        color: var(--danger);
+        background: var(--danger-soft);
+      }
+      .restore {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        min-height: 44px;
+        background: none;
+        border: 0;
+        color: var(--accent);
+        font-size: 12px;
+        padding: 0;
+      }
+      .restore .icon {
+        width: 15px;
+        height: 15px;
+      }
+      .task.hidden-task {
+        grid-template-columns: 36px minmax(0, 1fr) 135px 112px;
+      }
+      .groups {
+        margin-top: 25px;
+      }
+      .disclosure {
+        border-bottom: 1px solid var(--line);
+      }
+      .disclosure summary {
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 65px;
+        padding: 16px 2px;
+        list-style: none;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .disclosure summary::-webkit-details-marker {
+        display: none;
+      }
+      .disclosure summary .icon {
+        width: 15px;
+        height: 15px;
+        transition: transform 0.18s ease;
+      }
+      .disclosure[open] summary .icon {
+        transform: rotate(90deg);
+      }
+      .disclosure summary .count {
+        margin-left: auto;
+        background: transparent;
+      }
+      .disclosure summary:hover {
+        color: var(--text);
+      }
+      .disclosure .list {
+        margin: 0 0 20px;
+      }
+      .empty {
+        padding: 48px 24px 46px;
+        text-align: center;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        border-radius: 12px;
+      }
+      .empty-symbol {
+        width: 44px;
+        height: 44px;
+        margin: 0 auto 18px;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        color: var(--accent);
+        background: var(--accent-soft);
+      }
+      .empty h3 {
+        margin: 0 0 8px;
+        font-weight: 500;
+        font-size: 17px;
+      }
+      .empty p {
+        color: var(--muted);
+        font-size: 12px;
+        margin: 0;
+      }
+      .empty .scan {
+        margin-top: 22px;
+      }
+      .foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin: 34px 0 38px;
+        color: var(--faint);
+        font-size: 11px;
+      }
+      .foot-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .foot-left::before {
+        content: "";
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+      .demo-label {
+        padding: 1px 6px;
+        color: var(--amber);
+        background: var(--amber-soft);
+        border-radius: 4px;
+      }
+      .toast {
+        position: fixed;
+        left: 50%;
+        bottom: 28px;
+        transform: translate(-50%, 10px);
+        max-width: calc(100% - 32px);
+        padding: 12px 20px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--text);
+        color: var(--canvas);
+        font-size: 12px;
+        opacity: 0;
+        pointer-events: none;
+        z-index: 4;
+        transition:
+          opacity 0.18s ease,
+          transform 0.18s ease;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+      .skeleton {
+        min-height: 98px;
+        display: flex;
+        gap: 18px;
+        align-items: center;
+        padding: 20px 24px;
+      }
+      .skeleton + .skeleton {
+        border-top: 1px solid var(--line);
+      }
+      .skeleton-circle {
+        width: 22px;
+        height: 22px;
+        background: var(--soft);
+        border-radius: 50%;
+      }
+      .skeleton-lines {
+        flex: 1;
+      }
+      .skeleton-lines::before,
+      .skeleton-lines::after {
+        content: "";
+        display: block;
+        height: 10px;
+        width: 38%;
+        border-radius: 3px;
+        background: var(--soft);
+      }
+      .skeleton-lines::after {
+        width: 22%;
+        margin-top: 12px;
+        height: 7px;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (max-width: 800px) {
+        .wrap {
+          padding: 0 24px;
+        }
+        .brand-caption,
+        .portal {
+          display: none;
+        }
+        .hero {
+          margin: 40px 0 30px;
+          gap: 20px;
+        }
+        .metrics {
+          gap: 24px;
+          padding: 0;
+        }
+        .metric dd {
+          font-size: 32px;
+        }
+        .metric:first-child dd {
+          font-size: 48px;
+        }
+        .task {
+          grid-template-columns: 32px minmax(0, 1fr) 100px 28px;
+          gap: 12px;
+          padding: 19px 18px;
+        }
+        .task .due {
+          display: none;
+        }
+        .task .meta .mobile-date {
+          display: inline;
+        }
+        .task.hidden-task {
+          grid-template-columns: 32px minmax(0, 1fr) 80px;
+        }
+        .task.hidden-task .due {
+          display: none;
+        }
+      }
+      @media (min-width: 801px) {
+        .mobile-date {
+          display: none;
+        }
+      }
+      @media (max-width: 560px) {
+        .wrap {
+          padding: 0 18px;
+        }
+        .top {
+          min-height: 82px;
+          gap: 12px;
+        }
+        .brand {
+          gap: 9px;
+        }
+        .brand-name {
+          font-size: 18px;
+        }
+        .brand-mark {
+          width: 30px;
+          height: 30px;
+          border-radius: 8px;
+        }
+        .controls {
+          gap: 8px;
+        }
+        .scan {
+          padding: 0 12px;
+          font-size: 12px;
+        }
+        .icon-btn {
+          width: 40px;
+        }
+        .hero {
+          display: block;
+          margin: 32px 0 25px;
+        }
+        h1 {
+          font-size: 32px;
+        }
+        .intro {
+          font-size: 12px;
+          margin-top: 8px;
+        }
+        .metrics {
+          margin-top: 28px;
+          justify-content: flex-start;
+          gap: 40px;
+        }
+        .metric:first-child dd {
+          font-size: 46px;
+        }
+        .metric dd {
+          font-size: 34px;
+        }
+        .metric dt {
+          font-size: 10px;
+        }
+        .deadline {
+          padding: 16px;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 12px;
+          margin-bottom: 26px;
+        }
+        .deadline-symbol {
+          display: none;
+        }
+        .deadline-name {
+          font-size: 12px;
+        }
+        .deadline-name span {
+          display: block;
+          font-size: 10px;
+          margin-bottom: 3px;
+        }
+        .deadline-time {
+          font-size: 13px;
+        }
+        .deadline-time small {
+          font-size: 10px;
+        }
+        .task {
+          grid-template-columns: 28px minmax(0, 1fr) 26px;
+          gap: 3px 10px;
+          padding: 17px 12px;
+        }
+        .task .check,
+        .task .row-symbol {
+          grid-column: 1;
+          grid-row: 1 / 3;
+          width: 28px;
+        }
+        .task .main {
+          grid-column: 2;
+          grid-row: 1;
+        }
+        .task .status {
+          grid-column: 2;
+          grid-row: 2;
+          margin-top: 7px;
+          padding: 2px 6px;
+          font-size: 10px;
+        }
+        .task .del {
+          grid-column: 3;
+          grid-row: 1 / 3;
+          width: 26px;
+        }
+        .name {
+          font-size: 13px;
+        }
+        .meta {
+          gap: 6px;
+          margin-top: 5px;
+        }
+        .chip {
+          font-size: 9px;
+        }
+        .meta-note {
+          font-size: 10px;
+        }
+        .task.hidden-task {
+          grid-template-columns: 28px minmax(0, 1fr) 48px;
+        }
+        .task.hidden-task .restore {
+          grid-column: 3;
+          grid-row: 1 / 3;
+          font-size: 11px;
+        }
+        .task.hidden-task .restore .icon {
+          display: none;
+        }
+        .section-heading h2 {
+          font-size: 13px;
+        }
+        .sort-label {
+          font-size: 10px;
+        }
+        .foot {
+          margin: 28px 0;
+          font-size: 10px;
+        }
+        .notice {
+          padding: 11px 12px;
+          gap: 8px;
+          font-size: 11px;
+        }
+        .empty {
+          padding: 36px 18px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+          scroll-behavior: auto !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#main">跳到任务清单</a>
+    <svg class="sr-only" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <symbol id="i-check" viewBox="0 0 24 24">
+        <path d="m5 12 4 4L19 6" />
+      </symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24">
+        <path d="M20 7v5h-5M4 17v-5h5" />
+        <path
+          d="M5.6 7a7.8 7.8 0 0 1 13.2-1L20 8M4 16l1.2 2a7.8 7.8 0 0 0 13.2-1"
+        />
+      </symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24">
+        <path d="M20.6 13.3A8.7 8.7 0 0 1 10.7 3.4a8.8 8.8 0 1 0 9.9 9.9Z" />
+      </symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="4" />
+        <path
+          d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"
+        />
+      </symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24">
+        <path d="M7 17 17 7M7 7h10v10" />
+      </symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24">
+        <path d="M4 6h16M9 6V3h6v3M6 6l1 14h10l1-14M10 10v6M14 10v6" />
+      </symbol>
+      <symbol id="i-restore" viewBox="0 0 24 24">
+        <path d="M4 5v6h6M4.7 10a8 8 0 1 1 1.5 8" />
+      </symbol>
+      <symbol id="i-calendar" viewBox="0 0 24 24">
+        <rect x="4" y="5" width="16" height="15" rx="2" />
+        <path d="M8 3v4M16 3v4M4 11h16M8 15h3" />
+      </symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24">
+        <path d="m9 5 7 7-7 7" />
+      </symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8" />
+        <path d="M12 7v5l3 2" />
+      </symbol>
+    </svg>
+    <div class="wrap">
+      <header class="top">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"
+            ><svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M12 5C9 3 6 3 3 4v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1Zm0 0v15"
+              /></svg
+          ></span>
+          <span class="brand-name">bbwatch</span
+          ><span class="brand-caption">学习，有条不紊。</span>
+        </div>
+        <nav class="controls" aria-label="课程工具">
+          <a
+            class="portal"
+            href="https://bb.cuhk.edu.cn"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Blackboard<svg class="icon" aria-hidden="true">
+              <use href="#i-arrow" /></svg
+          ></a>
+          <button
+            class="icon-btn"
+            id="themeBtn"
+            type="button"
+            aria-label="切换主题"
+          ></button>
+          <button class="scan" id="scanBtn" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg
+            ><span id="scanTxt">扫描更新</span>
+          </button>
+        </nav>
+      </header>
+      <main id="main" tabindex="-1">
+        <section class="hero" aria-labelledby="pageTitle">
+          <div>
+            <p class="eyebrow">CUHK-SZ / BLACKBOARD</p>
+            <h1 id="pageTitle">课程任务</h1>
+            <p class="intro">作业、截止时间与批改进度，一目了然。</p>
+          </div>
+          <dl class="metrics" id="metrics" aria-label="任务统计">
+            <div class="metric">
+              <dt>待完成</dt>
+              <dd>—</dd>
+            </div>
+            <div class="metric">
+              <dt>待批改</dt>
+              <dd>—</dd>
+            </div>
+            <div class="metric">
+              <dt>已完成</dt>
+              <dd>—</dd>
+            </div>
+          </dl>
+        </section>
+        <aside
+          class="deadline"
+          id="deadline"
+          aria-label="下一项截止"
+          hidden
+        ></aside>
+        <div class="notice" id="notice" role="alert" hidden>
+          <span class="notice-text" id="noticeText"></span
+          ><button class="text-btn" id="retryBtn" type="button">
+            重新连接
+          </button>
+        </div>
+        <section id="board" aria-label="作业清单" aria-busy="true">
+          <div class="section-heading"><h2>正在载入清单</h2></div>
+          <div class="list" aria-hidden="true">
+            <div class="skeleton">
+              <span class="skeleton-circle"></span>
+              <div class="skeleton-lines"></div>
+            </div>
+            <div class="skeleton">
+              <span class="skeleton-circle"></span>
+              <div class="skeleton-lines"></div>
+            </div>
+            <div class="skeleton">
+              <span class="skeleton-circle"></span>
+              <div class="skeleton-lines"></div>
+            </div>
+          </div>
+        </section>
+      </main>
+      <footer class="foot">
+        <div class="foot-left">
+          <span id="lastScan">正在读取本地清单</span
+          ><span id="demoLabel" class="demo-label" hidden>演示数据</span>
+        </div>
+        <span>北京时间 UTC+8 · 本地学习清单</span>
+      </footer>
     </div>
-  </div>
-
-  <div class="stale" id="stale"></div>
-
-  <div class="hero" id="hero"></div>
-
-  <div id="board"></div>
-
-  <div class="foot">
-    <div class="l" id="lastScan">—</div>
-    <div class="l" id="footRight"></div>
-  </div>
-</div>
-<div class="toast" id="toast"></div>
-
-<script>
-const DEMO = {tasks:[
-  {entity_key:"col:_a:_1",course_id:"_a",content_id:"_1001_1",course:"MAT3007:Optimization_L01",name:"Homework 4",due_utc:isoIn(46),done:false},
-  {entity_key:"col:_b:_2",course_id:"_b",content_id:"_1002_1",course:"DDA2001:Introduction to Data Science",name:"Mock Quiz",due_utc:isoIn(-120),done:false},
-  {entity_key:"col:_c:_3",course_id:"_c",content_id:"_1003_1",course:"CSC3001:Discrete Mathematics",name:"Assignment 2",due_utc:isoIn(140),done:false},
-  {entity_key:"col:_d:_4",course_id:"_d",content_id:"_1004_1",course:"STA2001H:Probability & Statistics",name:"Problem Set 5",due_utc:isoIn(18),done:true},
-], pending:[
-  {entity_key:"col:_e:_5",course_id:"_e",content_id:"_1005_1",course:"MAT3007:Optimization_L01",name:"Homework 2",due_utc:isoIn(-24*20),waited_days:20},
-  {entity_key:"col:_f:_6",course_id:"_f",content_id:"_1006_1",course:"MAT3350:Information Theory",name:"Assignment 1",due_utc:isoIn(-24*5),waited_days:5},
-  {entity_key:"col:_g:_7",course_id:"_g",content_id:"_1007_1",course:"DDA2001:Introduction to Data Science",name:"Homework 3",due_utc:isoIn(-24*9),waited_days:9},
-], hidden:[
-  {entity_key:"col:_x:_9",course_id:"_x",course:"PED1201:Badminton",name:"体育打卡（老师不批）",due_utc:isoIn(-24*30)},
-], last_scan:isoIn(-0.3), summary:"⏳ 3 项已交作业逾 2 周未出分（可催老师）", demo:true};
-function isoIn(h){return new Date(Date.now()+h*3600*1000).toISOString().replace('Z','.000Z')}
-
-let STATE=null;
-const $=s=>document.querySelector(s);
-const esc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function parseUTC(s){return new Date(String(s).replace('Z','+00:00').replace(/(\.\d+)?\+00:00$/,'+00:00'))}
-function hue(s){let h=0;for(const c of (s||''))h=(h*31+c.charCodeAt(0))>>>0;return Math.round((h*137.508)%360)}
-function courseShort(c){const m=String(c||'').match(/^[A-Z]{2,4}\d{3,4}[A-Z]?/);return m?m[0]:String(c||'').slice(0,8)}
-
-// 日夜主题
-const MOON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
-const SUN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.2M12 19.8V22M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2 12h2.2M19.8 12H22M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/></svg>';
-function themeNow(){return document.documentElement.getAttribute('data-theme')||'dark'}
-function setThemeIcon(){const b=document.getElementById('themeBtn'); if(b)b.innerHTML=themeNow()==='dark'?SUN:MOON;}
-function toggleTheme(){const t=themeNow()==='dark'?'light':'dark'; try{localStorage.setItem('bbwatch-theme',t)}catch(e){} document.documentElement.setAttribute('data-theme',t); setThemeIcon();}
-setThemeIcon();
-
-// 已提交待批改
-function openPending(){const w=document.getElementById('pw'); if(w){w.classList.add('open'); w.scrollIntoView({behavior:'smooth',block:'center'});}}
-function pendingRow(t,i){
-  const due=parseUTC(t.due_utc); const hu=hue(t.course); const wd=t.waited_days;
-  const wtag = wd==null?'':(wd>=14?`<span style="color:var(--amber);font-weight:600">已等 ${wd} 天 · 可催老师</span>`:`已等 ${wd} 天`);
-  return `<div class="task calm" style="--d:${.05*i+.05}s">
-    <div class="bar" style="background:var(--teal)"></div>
-    <div class="main">
-      <a class="name" href="${jumpUrl(t)}" target="_blank" rel="noopener">${esc(t.name)}</a>
-      <div class="meta"><span class="chip" style="background:hsl(${hu} 70% 60%)">${esc(courseShort(t.course))}</span><span class="when">${fmt(due)} 截止${wtag?` · ${wtag}`:''}</span></div>
-    </div>
-    <div class="right">
-      <div class="rel" style="color:var(--teal);font-size:17px">待批改</div>
-      <button class="del" title="删除（可在回收站恢复）" onclick="hide('${t.entity_key}',true)">×</button>
-    </div>
-  </div>`;
-}
-
-// 跳转到 BB：有 content_id 时深链到该作业的提交/批改页(Review Submission History)；
-// 否则退回该课 My Grades 列表。
-const BBHOST='https://bb.cuhk.edu.cn';
-function jumpUrl(t){
-  const cid=t.course_id||String(t.entity_key||'').split(':')[1]||'';
-  const c=encodeURIComponent(cid);
-  if(t.content_id){
-    return `${BBHOST}/webapps/assignment/uploadAssignment?content_id=${encodeURIComponent(t.content_id)}&course_id=${c}&mode=view`;
-  }
-  return `${BBHOST}/webapps/gradebook/do/student/viewGrades?course_id=${c}`;
-}
-
-// 删除(隐藏)/恢复
-function localHide(key,h){
-  if(h){
-    const it=(STATE.tasks||[]).find(x=>x.entity_key===key)||(STATE.pending||[]).find(x=>x.entity_key===key);
-    STATE.tasks=(STATE.tasks||[]).filter(x=>x.entity_key!==key);
-    STATE.pending=(STATE.pending||[]).filter(x=>x.entity_key!==key);
-    if(it){STATE.hidden=STATE.hidden||[]; if(!STATE.hidden.find(x=>x.entity_key===key))STATE.hidden.unshift(it);}
-  }else{
-    const it=(STATE.hidden||[]).find(x=>x.entity_key===key);
-    STATE.hidden=(STATE.hidden||[]).filter(x=>x.entity_key!==key);
-    if(it){STATE.tasks=STATE.tasks||[]; if(!STATE.tasks.find(x=>x.entity_key===key))STATE.tasks.push(it);}
-  }
-}
-async function hide(key,h){
-  localHide(key,h); render();
-  try{await fetch('/api/hide',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entity_key:key,hidden:h})}); load();}
-  catch(e){toast(h?'已删除（离线演示）':'已恢复（离线演示）')}
-}
-function hiddenRow(t,i){
-  const due=parseUTC(t.due_utc); const hu=hue(t.course);
-  return `<div class="task done" style="--d:${.05*i}s;opacity:.65">
-    <div class="bar" style="background:var(--faint)"></div>
-    <div class="main">
-      <a class="name" href="${jumpUrl(t)}" target="_blank" rel="noopener">${esc(t.name)}</a>
-      <div class="meta"><span class="chip" style="background:hsl(${hu} 35% 52%)">${esc(courseShort(t.course))}</span><span class="when">${due?fmt(due):''}</span></div>
-    </div>
-    <div class="right"><button class="restore" onclick="hide('${t.entity_key}',false)">恢复</button></div>
-  </div>`;
-}
-
-async function load(){
-  let d;
-  try{const r=await fetch('/api/tasks',{cache:'no-store'});d=await r.json();}
-  catch(e){d=DEMO;}
-  STATE=d; render();
-}
-function classify(due,now){const h=(due-now)/3600000; if(h<0)return['ov','已逾期'];if(h<=24)return['ur','紧急'];if(h<=72)return['soon','临近'];return['calm','充裕'];}
-function rel(due,now){let h=(due-now)/3600000;const past=h<0;h=Math.abs(h);
-  let t; if(h<1)t=Math.max(1,Math.round(h*60))+'分';else if(h<48)t=Math.round(h)+'h';else t=Math.round(h/24)+'天';
-  return past?{n:t,u:'前已逾期'}:{n:t,u:'后截止'};}
-function fmt(due){const l=new Date(due.getTime()+8*3600*1000);const p=n=>String(n).padStart(2,'0');return `${p(l.getUTCMonth()+1)}/${p(l.getUTCDate())} ${p(l.getUTCHours())}:${p(l.getUTCMinutes())}`}
-
-function taskRow(t,i){
-  const due=parseUTC(t.due_utc), now=Date.now();
-  const [cls,_]=classify(due,now); const r=rel(due,now);
-  const hu=hue(t.course); const chip=`background:hsl(${hu} 70% 62%)`;
-  const cl=t.done?'calm':cls;
-  return `<div class="task ${cl} ${t.done?'done':''}" style="--d:${.06*i+.12}s">
-    <div class="bar"></div>
-    <div class="main">
-      <a class="name" href="${jumpUrl(t)}" target="_blank" rel="noopener">${esc(t.name)}</a>
-      <div class="meta">
-        <span class="chip" style="${chip}">${esc(courseShort(t.course))}</span>
-        <span class="when">${fmt(due)}</span>
-      </div>
-    </div>
-    <div class="right">
-      ${t.done?'':`<div class="rel">${r.n}<small>${r.u}</small></div>`}
-      <button class="del" title="删除（可在回收站恢复）" onclick="hide('${t.entity_key}',true)">×</button>
-      <div class="check" role="checkbox" aria-checked="${t.done}" onclick="toggle('${t.entity_key}',${!t.done})">
-        <svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
-      </div>
-    </div>
-  </div>`;
-}
-
-function render(){
-  const tasks=(STATE.tasks||[]).slice();
-  const now=Date.now();
-  const todo=tasks.filter(t=>!t.done).sort((a,b)=>parseUTC(a.due_utc)-parseUTC(b.due_utc));
-  const done=tasks.filter(t=>t.done).sort((a,b)=>parseUTC(b.due_utc)-parseUTC(a.due_utc));
-  const pend=(STATE.pending||[]);
-  const hid=(STATE.hidden||[]);
-
-  // hero
-  const hero=$('#hero');
-  if(todo.length===0){
-    hero.className='hero allclear';
-    hero.innerHTML=`<div class="lead">CUHK-SZ · Blackboard</div>
-      <div class="big">全部搞定<span class="u">✓</span></div>
-      <div class="sub">没有待完成的作业，去做点别的吧。</div>`;
-  }else{
-    const upcoming=todo.filter(t=>parseUTC(t.due_utc)-now>=0);
-    const overdue=todo.length-upcoming.length;
-    let sub;
-    if(upcoming.length){
-      const u=upcoming[0]; const r=rel(parseUTC(u.due_utc),now);
-      sub=`最近 <span class="accent">${r.n} ${r.u}</span> · ${esc(courseShort(u.course))} ${esc(u.name)}`;
-    }else{
-      const o=todo[0]; const r=rel(parseUTC(o.due_utc),now);
-      sub=`<span class="accent">最早一项 ${r.n}${r.u}</span>`;
-    }
-    if(overdue)sub+=` · <span style="color:var(--coral)">${overdue} 项已逾期</span>`;
-    hero.className='hero';
-    hero.innerHTML=`<div class="lead">CUHK-SZ · Blackboard</div>
-      <div class="big">${todo.length}<span class="u">项待完成</span></div>
-      <div class="sub">${sub}</div>`;
-  }
-
-  // board
-  let html='';
-  if(todo.length){
-    html+=`<div class="seg"><span>待完成 · ${todo.length}</span><div class="rule"></div></div>
-      <div class="list">${todo.map((t,i)=>taskRow(t,i)).join('')}</div>`;
-  }else{
-    html+=`<div class="empty"><div class="mk">✓</div><p>清单已清空</p></div>`;
-  }
-  if(pend.length){
-    html+=`<div class="done-wrap" id="pw"><div class="done-head" onclick="document.getElementById('pw').classList.toggle('open')">
-      <svg class="arw" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 1l4 4-4 4"/></svg>
-      已提交待批改 · ${pend.length}</div>
-      <div class="done-body">${pend.map((t,i)=>pendingRow(t,i)).join('')}</div></div>`;
-  }
-  if(done.length){
-    html+=`<div class="done-wrap" id="dw"><div class="done-head" onclick="document.getElementById('dw').classList.toggle('open')">
-      <svg class="arw" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 1l4 4-4 4"/></svg>
-      已完成 · ${done.length}</div>
-      <div class="done-body">${done.map((t,i)=>taskRow(t,i)).join('')}</div></div>`;
-  }
-  if(hid.length){
-    html+=`<div class="done-wrap" id="hw"><div class="done-head" onclick="document.getElementById('hw').classList.toggle('open')">
-      <svg class="arw" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 1l4 4-4 4"/></svg>
-      🗑 回收站 · ${hid.length}</div>
-      <div class="done-body">${hid.map((t,i)=>hiddenRow(t,i)).join('')}</div></div>`;
-  }
-  $('#board').innerHTML=html;
-
-  // footer + stale
-  const ls=STATE.last_scan?parseUTC(STATE.last_scan):null;
-  $('#lastScan').textContent = ls? `上次扫描 ${rel(ls,now).n}前${STATE.demo?' · 演示数据':''}` : '尚未扫描';
-  $('#footRight').innerHTML = pend.length? `<span class="backlog" onclick="openPending()">⏳ ${pend.length} 项已交待批改 →</span>` : '';
-  const st=$('#stale');
-  if(ls && (now-ls)/3600000>12 && todo.some(t=>{const h=(parseUTC(t.due_utc)-now)/3600000;return h>0&&h<72})){
-    st.className='stale show'; st.textContent='⚠ 距上次扫描已超过 12 小时，且有临近截止 — 建议点右上角刷新';
-  }else st.className='stale';
-}
-
-async function toggle(key,done){
-  const t=(STATE.tasks||[]).find(x=>x.entity_key===key); if(t)t.done=done; render();
-  try{await fetch('/api/done',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entity_key:key,done})});}
-  catch(e){toast('离线演示：仅本地切换')}
-}
-async function doScan(){
-  const b=$('#scanBtn'); b.classList.add('spin'); $('#scanTxt').textContent='扫描中';
-  try{await fetch('/api/scan',{method:'POST'});toast('已开始扫描，约 40 秒后自动刷新');}
-  catch(e){toast('离线演示：无法扫描')}
-  let n=0;const iv=setInterval(async()=>{await load();if(++n>=16){clearInterval(iv);b.classList.remove('spin');$('#scanTxt').textContent='扫描'}},3000);
-  setTimeout(()=>{b.classList.remove('spin');$('#scanTxt').textContent='扫描'},48000);
-}
-function toast(m){const t=$('#toast');t.textContent=m;t.className='toast show';clearTimeout(t._);t._=setTimeout(()=>t.className='toast',2600)}
-
-load();
-setInterval(()=>{if(STATE)render()},60000); // 每分钟刷新倒计时
-</script>
-</body>
+    <div
+      class="toast"
+      id="toast"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    ></div>
+    <script>
+      let STATE = null;
+      let SCAN_ACTIVE = false;
+      let LOAD_SEQUENCE = 0;
+      let LOAD_ERROR = false;
+      let scanTimer = null;
+      const SAVING = new Set();
+      const OPEN_GROUPS = new Set();
+      const $ = (s) => document.querySelector(s);
+      const esc = (s) =>
+        String(s ?? "").replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c],
+        );
+      const icon = (name) =>
+        `<svg class="icon" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+      const count = (n) => String(n).padStart(2, "0");
+      function parseUTC(s) {
+        if (!s) return null;
+        const d = new Date(s);
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
+      function fmt(due) {
+        if (!due || Number.isNaN(due.getTime())) return "未设置截止时间";
+        return new Intl.DateTimeFormat("zh-CN", {
+          timeZone: "Asia/Shanghai",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        })
+          .format(due)
+          .replace(/\//g, "/");
+      }
+      function courseShort(c) {
+        const s = String(c || "");
+        const m = s.match(/^[A-Z]{2,5}\d{3,4}[A-Z]?/);
+        return m ? m[0] : s.split(":")[0] || "未分类课程";
+      }
+      function classify(due, now) {
+        if (!due) return "calm";
+        const h = (due - now) / 3600000;
+        return h < 0 ? "ov" : h <= 24 ? "ur" : h <= 72 ? "soon" : "calm";
+      }
+      function rel(due, now) {
+        if (!due) return { n: "时间待定", u: "" };
+        const hours = (due - now) / 3600000;
+        const h = Math.abs(hours);
+        let n =
+          h < 1
+            ? `${Math.max(1, Math.ceil(h * 60))}分钟`
+            : h < 48
+              ? `${Math.ceil(h)}小时`
+              : `${Math.ceil(h / 24)}天`;
+        return { n, u: hours < 0 ? "已逾期" : "后截止" };
+      }
+      function deadlineStatus(due, now) {
+        if (!due) return "时间待定";
+        const r = rel(due, now);
+        return due < now ? `逾期 ${r.n}` : `${r.n}后截止`;
+      }
+      function themeNow() {
+        return document.documentElement.getAttribute("data-theme") || "light";
+      }
+      function setThemeIcon() {
+        const b = $("#themeBtn");
+        b.innerHTML = icon(themeNow() === "dark" ? "sun" : "moon");
+        const label =
+          themeNow() === "dark" ? "切换到日间主题" : "切换到夜间主题";
+        b.setAttribute("aria-label", label);
+        b.title = label;
+      }
+      function toggleTheme() {
+        const t = themeNow() === "dark" ? "light" : "dark";
+        try {
+          localStorage.setItem("bbwatch-theme", t);
+        } catch (_) {}
+        document.documentElement.setAttribute("data-theme", t);
+        setThemeIcon();
+      }
+      const BBHOST = "https://bb.cuhk.edu.cn";
+      function jumpUrl(t) {
+        const cid =
+          t.course_id || String(t.entity_key || "").split(":")[1] || "";
+        const c = encodeURIComponent(cid);
+        return t.content_id
+          ? `${BBHOST}/webapps/assignment/uploadAssignment?content_id=${encodeURIComponent(t.content_id)}&course_id=${c}&mode=view`
+          : `${BBHOST}/webapps/gradebook/do/student/viewGrades?course_id=${c}`;
+      }
+      function rowMain(t) {
+        const due = parseUTC(t.due_utc);
+        return `<div class="main"><a class="name" data-focus="link:${esc(t.entity_key)}" href="${esc(jumpUrl(t))}" target="_blank" rel="noopener noreferrer" title="在 Blackboard 查看：${esc(t.name)}">${esc(t.name)}</a><div class="meta"><span class="chip" title="${esc(t.course || t.course_id)}">${esc(courseShort(t.course || t.course_id))}</span><span class="meta-note mobile-date">${esc(fmt(due))}</span></div></div>`;
+      }
+      function rowDate(t) {
+        const due = parseUTC(t.due_utc);
+        if (!due)
+          return '<div class="due">时间待定<small>未设置截止日期</small></div>';
+        const parts = fmt(due).split(" ");
+        return `<div class="due">${esc(parts[0])}<small>${esc(parts.slice(1).join(" "))} 截止</small></div>`;
+      }
+      function hideButton(t) {
+        return `<button class="del" type="button" data-action="hide" data-key="${esc(t.entity_key)}" data-focus="hide:${esc(t.entity_key)}" title="隐藏此任务，可在已隐藏中恢复" aria-label="隐藏 ${esc(t.name)}" ${SAVING.has(t.entity_key) ? "disabled" : ""}>${icon("trash")}</button>`;
+      }
+      function taskRow(t, i) {
+        const due = parseUTC(t.due_utc);
+        const status = t.done ? "已完成" : deadlineStatus(due, Date.now());
+        return `<article class="task ${t.done ? "done" : classify(due, Date.now())} ${SAVING.has(t.entity_key) ? "is-saving" : ""}"><button class="check" type="button" role="checkbox" aria-checked="${!!t.done}" aria-label="${t.done ? "标记未完成" : "标记完成"}：${esc(t.name)}" data-action="done" data-key="${esc(t.entity_key)}" data-done="${!t.done}" data-focus="done:${esc(t.entity_key)}" ${SAVING.has(t.entity_key) ? "disabled" : ""}><span class="check-shape">${icon("check")}</span></button>${rowMain(t)}${rowDate(t)}<span class="status">${esc(status)}</span>${hideButton(t)}</article>`;
+      }
+      function pendingRow(t, i) {
+        const waited = Number.isFinite(t.waited_days)
+          ? `${t.waited_days}天待批改`
+          : "等待批改";
+        return `<article class="task pending ${SAVING.has(t.entity_key) ? "is-saving" : ""}"><span class="row-symbol">${icon("clock")}</span>${rowMain(t)}${rowDate(t)}<span class="status" title="${t.waited_days >= 14 ? "已等待较久，可向老师确认批改进度" : "已提交，等待老师批改"}">${esc(waited)}${t.waited_days >= 14 ? "<small>可向老师确认</small>" : ""}</span>${hideButton(t)}</article>`;
+      }
+      function hiddenRow(t, i) {
+        return `<article class="task hidden-task ${SAVING.has(t.entity_key) ? "is-saving" : ""}"><span class="row-symbol">${icon("trash")}</span>${rowMain(t)}${rowDate(t)}<button class="restore" type="button" data-action="restore" data-key="${esc(t.entity_key)}" data-focus="restore:${esc(t.entity_key)}" aria-label="恢复 ${esc(t.name)}" ${SAVING.has(t.entity_key) ? "disabled" : ""}>${icon("restore")}恢复</button></article>`;
+      }
+      function group(id, label, items, row) {
+        if (!items.length) return "";
+        return `<details class="disclosure" id="${id}" ${OPEN_GROUPS.has(id) ? "open" : ""}><summary>${icon("chevron")}<span>${label}</span><span class="count">${count(items.length)}</span></summary><div class="list">${items.map(row).join("")}</div></details>`;
+      }
+      function notice(message, kind = "error", retry = true) {
+        const box = $("#notice");
+        box.className = `notice ${kind}`;
+        box.hidden = !message;
+        $("#noticeText").textContent = message;
+        $("#retryBtn").hidden = !retry;
+      }
+      function restoreFocus(focusKey) {
+        const target = Array.from(
+          document.querySelectorAll("[data-focus]"),
+        ).find((el) => el.getAttribute("data-focus") === focusKey);
+        if (target && !target.disabled) {
+          const parent = target.closest("details");
+          if (parent) {
+            parent.open = true;
+            OPEN_GROUPS.add(parent.id);
+          }
+          target.focus({ preventScroll: true });
+        } else if (!target) $("#boardHeading")?.focus({ preventScroll: true });
+      }
+      function render() {
+        if (!STATE) return;
+        for (const d of document.querySelectorAll("details.disclosure")) {
+          if (d.open) OPEN_GROUPS.add(d.id);
+          else OPEN_GROUPS.delete(d.id);
+        }
+        const active = document.activeElement;
+        const focusKey = active?.getAttribute?.("data-focus");
+        const focusSummary =
+          active?.tagName === "SUMMARY" ? active.parentElement?.id : null;
+        const now = Date.now(),
+          tasks = STATE.tasks.slice();
+        const dateOrder = (t) => parseUTC(t.due_utc)?.getTime() ?? Infinity;
+        const todo = tasks
+          .filter((t) => !t.done)
+          .sort((a, b) => dateOrder(a) - dateOrder(b));
+        const done = tasks
+          .filter((t) => t.done)
+          .sort((a, b) => dateOrder(b) - dateOrder(a));
+        const pend = STATE.pending || [],
+          hidden = STATE.hidden || [];
+        $("#metrics").innerHTML = [
+          ["待完成", todo.length],
+          ["待批改", pend.length],
+          ["已完成", done.length],
+        ]
+          .map(
+            ([name, n]) =>
+              `<div class="metric"><dt>${name}</dt><dd>${count(n)}</dd></div>`,
+          )
+          .join("");
+        const next =
+          todo.find((t) => dateOrder(t) >= now && dateOrder(t) !== Infinity) ||
+          todo[0];
+        const focus = $("#deadline");
+        focus.hidden = !next;
+        if (next) {
+          const due = parseUTC(next.due_utc);
+          const label = due && due < now ? "优先关注" : "下一项截止";
+          focus.setAttribute("aria-label", label);
+          focus.innerHTML = `<span class="deadline-symbol">${icon("calendar")}</span><div><p class="deadline-label">${label}</p><div class="deadline-name"><span>${esc(courseShort(next.course || next.course_id))}</span>${esc(next.name)}</div></div><div class="deadline-time">${esc(deadlineStatus(due, now))}<small>${esc(fmt(due))}</small></div>`;
+        }
+        let html = `<div class="section-heading"><h2 id="boardHeading" tabindex="-1">待完成<span class="count">${count(todo.length)}</span></h2><span class="sort-label">按截止时间排序</span></div>`;
+        if (todo.length)
+          html += `<div class="list">${todo.map(taskRow).join("")}</div>`;
+        else if (!STATE.last_scan)
+          html += `<div class="empty"><span class="empty-symbol">${icon("calendar")}</span><h3>从第一次同步开始</h3><p>扫描 Blackboard，将课程与作业整理到这里。</p><button class="scan" type="button" data-action="scan" ${SCAN_ACTIVE ? "disabled" : ""}>${icon("refresh")}${SCAN_ACTIVE ? "扫描中" : "扫描课程"}</button></div>`;
+        else
+          html += `<div class="empty"><span class="empty-symbol">${icon("check")}</span><h3>暂时没有待完成的作业</h3><p>${pend.length ? "已提交的作业，可以在下方查看批改进度。" : "清单已整理好，留一点时间给自己。"}</p></div>`;
+        html += `<div class="groups">${group("pw", "已提交 · 待批改", pend, pendingRow)}${group("dw", "已完成", done, taskRow)}${group("hw", "已隐藏", hidden, hiddenRow)}</div>`;
+        $("#board").innerHTML = html;
+        $("#board").setAttribute("aria-busy", "false");
+        const last = parseUTC(STATE.last_scan);
+        $("#lastScan").textContent = last
+          ? `上次扫描 · ${rel(last, now).n}前`
+          : "尚未扫描";
+        $("#demoLabel").hidden = !STATE.demo;
+        if (!LOAD_ERROR) {
+          if (
+            last &&
+            now - last > 12 * 3600000 &&
+            todo.some((t) => {
+              const d = parseUTC(t.due_utc);
+              return d && d > now && d - now < 72 * 3600000;
+            })
+          )
+            notice(
+              "清单超过 12 小时未更新，近期有作业截止，建议扫描一次。",
+              "warning",
+              false,
+            );
+          else notice("");
+        }
+        if (focusKey) restoreFocus(focusKey);
+        else if (focusSummary) {
+          document
+            .getElementById(focusSummary)
+            ?.querySelector("summary")
+            ?.focus({ preventScroll: true });
+        }
+      }
+      async function request(url, options = {}) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 12000);
+        try {
+          const response = await fetch(url, {
+            ...options,
+            signal: controller.signal,
+          });
+          if (!response.ok) throw new Error("请求未能完成");
+          const data = await response.json();
+          if (options.method === "POST" && data.ok !== true)
+            throw new Error("操作未能保存");
+          return data;
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+      async function load() {
+        const seq = ++LOAD_SEQUENCE;
+        try {
+          const data = await request("/api/tasks", { cache: "no-store" });
+          if (
+            !data ||
+            !["tasks", "pending", "hidden"].every(
+              (group) =>
+                Array.isArray(data[group]) &&
+                data[group].every(
+                  (row) =>
+                    row &&
+                    typeof row === "object" &&
+                    !Array.isArray(row) &&
+                    typeof row.entity_key === "string" &&
+                    row.entity_key.length > 0 &&
+                    typeof row.name === "string",
+                ),
+            )
+          )
+            throw new Error("清单暂不可用");
+          if (seq !== LOAD_SEQUENCE) return false;
+          STATE = data;
+          LOAD_ERROR = false;
+          render();
+          return true;
+        } catch (_) {
+          if (seq !== LOAD_SEQUENCE) return false;
+          LOAD_ERROR = true;
+          notice(
+            STATE
+              ? "连接暂时中断，当前显示上次读取的清单。"
+              : "暂时无法连接看板，请确认本机 bbwatch 看板仍在运行。",
+          );
+          if (!STATE) {
+            $("#board").setAttribute("aria-busy", "false");
+            $("#board").innerHTML =
+              `<div class="empty"><span class="empty-symbol">${icon("restore")}</span><h3>清单暂时无法载入</h3><p>重新连接后，你的课程任务会出现在这里。</p></div>`;
+            $("#lastScan").textContent = "连接暂不可用";
+          }
+          return false;
+        }
+      }
+      async function mutate(path, key, payload, message) {
+        if (!STATE || SAVING.has(key)) return;
+        const active = document.activeElement;
+        const focusKey =
+          active?.getAttribute?.("data-key") === key
+            ? active.getAttribute("data-focus")
+            : null;
+        SAVING.add(key);
+        render();
+        try {
+          await request(path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ entity_key: key, ...payload }),
+          });
+          if (await load()) toast(message);
+          else toast("操作已保存，清单暂时无法刷新，请重新连接。");
+        } catch (_) {
+          toast("操作未能确认，请重试。清单未作更改。");
+        } finally {
+          SAVING.delete(key);
+          const activeNow = document.activeElement;
+          const shouldRestore =
+            focusKey &&
+            (!activeNow ||
+              activeNow === document.body ||
+              activeNow.getAttribute?.("data-focus") === focusKey);
+          render();
+          if (shouldRestore) {
+            const destination = STATE.hidden.some((t) => t.entity_key === key)
+              ? `restore:${key}`
+              : STATE.pending.some((t) => t.entity_key === key)
+                ? `link:${key}`
+                : focusKey.startsWith("restore:")
+                  ? `link:${key}`
+                  : focusKey;
+            restoreFocus(destination);
+          }
+        }
+      }
+      async function toggle(key, done) {
+        await mutate(
+          "/api/done",
+          key,
+          { done },
+          done ? "已标记完成，可在“已完成”中撤销。" : "已恢复为待完成。",
+        );
+      }
+      async function hide(key, h) {
+        await mutate(
+          "/api/hide",
+          key,
+          { hidden: h },
+          h ? "已隐藏，可在“已隐藏”中恢复。" : "已恢复到任务清单。",
+        );
+      }
+      function setScanBusy(busy) {
+        SCAN_ACTIVE = busy;
+        const b = $("#scanBtn");
+        b.disabled = busy;
+        b.classList.toggle("spin", busy);
+        b.setAttribute("aria-busy", String(busy));
+        $("#scanTxt").textContent = busy ? "扫描中" : "扫描更新";
+        for (const button of document.querySelectorAll(
+          '[data-action="scan"]',
+        )) {
+          button.disabled = busy;
+          button.innerHTML = `${icon("refresh")}${busy ? "扫描中" : "扫描课程"}`;
+          button.setAttribute("aria-busy", String(busy));
+        }
+      }
+      async function doScan() {
+        if (SCAN_ACTIVE) return;
+        setScanBusy(true);
+        const previous = STATE?.last_scan;
+        let accepted = false;
+        try {
+          await request("/api/scan", { method: "POST" });
+          accepted = true;
+          toast("扫描请求已发送，清单会自动刷新。");
+          let attempts = 0;
+          const poll = async () => {
+            if (!SCAN_ACTIVE) return;
+            await load();
+            attempts++;
+            if (STATE?.last_scan && STATE.last_scan !== previous) {
+              setScanBusy(false);
+              toast("扫描记录已更新，请查看当前清单。");
+              return;
+            }
+            if (attempts >= 16) {
+              setScanBusy(false);
+              toast("尚未收到新的扫描记录，可稍后重新连接查看。");
+              return;
+            }
+            scanTimer = setTimeout(poll, 3000);
+          };
+          scanTimer = setTimeout(poll, 3000);
+        } catch (_) {
+          toast("扫描请求未能确认，请稍后重试。");
+        } finally {
+          if (!accepted) setScanBusy(false);
+        }
+      }
+      function toast(message) {
+        const t = $("#toast");
+        t.textContent = message;
+        t.className = "toast show";
+        clearTimeout(t._timer);
+        t._timer = setTimeout(() => {
+          t.className = "toast";
+        }, 4200);
+      }
+      $("#themeBtn").addEventListener("click", toggleTheme);
+      $("#scanBtn").addEventListener("click", doScan);
+      $("#retryBtn").addEventListener("click", load);
+      $("#board").addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-action]");
+        if (!button || button.disabled) return;
+        const key = button.dataset.key;
+        if (button.dataset.action === "done")
+          toggle(key, button.dataset.done === "true");
+        else if (button.dataset.action === "hide") hide(key, true);
+        else if (button.dataset.action === "restore") hide(key, false);
+        else if (button.dataset.action === "scan") doScan();
+      });
+      setThemeIcon();
+      load();
+      setInterval(() => {
+        if (STATE && !document.hidden) render();
+      }, 60000);
+      window.addEventListener("pagehide", () => {
+        clearTimeout(scanTimer);
+        scanTimer = null;
+        setScanBusy(false);
+      });
+      window.addEventListener("pageshow", (event) => {
+        if (event.persisted) {
+          setScanBusy(false);
+          load();
+        }
+      });
+    </script>
+  </body>
 </html>
