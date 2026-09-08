@@ -1,5 +1,7 @@
 # bbwatch
 
+**新增 Codex 本机全局版：** 支持在 Codex 桌面应用／CLI 中对话查作业、扫描更新、下载课件。安装与使用见 [CODEX.md](CODEX.md)。默认按需运行，保留原有 Claude Code 集成。
+
 > 港中深（CUHK-SZ）Blackboard 的**作业雷达 + 课件下载器**——装进 Claude Code，平时**跟它说话**就行，不用记命令。
 
 老师在 `bb.cuhk.edu.cn` 上布置作业、发公告**不一定发邮件**，很容易漏做；期末想**批量下课件**又得一个个点。bbwatch 帮你盯着 BB，有新作业 / 改期 / 公告 / 出分就提醒你，维护一份漂亮的任务清单，还能一句话把整门课的课件下到本地。
@@ -18,6 +20,8 @@
 ---
 
 ## 🚀 安装（最省事：让 AI 帮你装）
+
+使用 **Codex**：在本仓库目录运行 `python3.12 scripts/install_codex.py`，完成后新建 Codex 任务。详见 [Codex 安装指南](CODEX.md)。下面的安装方式适用于 **Claude Code**。
 
 打开 Claude Code，在对话框发**一句话**：
 

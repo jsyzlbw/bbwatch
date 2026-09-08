@@ -1,8 +1,9 @@
 import json
-import os
+import runpy
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import Mock
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -46,11 +47,19 @@ def test_skill_frontmatter():
     assert t.startswith("---") and "name: bb-assistant" in t
 
 
-def test_session_start_runs_without_db(tmp_path):
-    env = dict(os.environ, BBWATCH_HOME=str(tmp_path / ".bbwatch"))
-    r = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "session_start.py")],
-        capture_output=True, text=True, env=env, timeout=20,
+def test_session_start_runs_without_db(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("BBWATCH_HOME", str(tmp_path / ".bbwatch"))
+    # The hook prepends its source directory; restore sys.path after this test.
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    spawn = Mock()
+    monkeypatch.setattr(subprocess, "Popen", spawn)
+
+    runpy.run_path(str(ROOT / "scripts" / "session_start.py"), run_name="__main__")
+
+    assert "bbwatch：尚未初始化" in capsys.readouterr().out
+    spawn.assert_called_once_with(
+        [sys.executable, "-m", "bbwatch.cli", "scan"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
     )
-    assert r.returncode == 0
-    assert "bbwatch" in r.stdout

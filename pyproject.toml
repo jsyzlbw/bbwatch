@@ -1,13 +1,13 @@
 [project]
 name = "bbwatch"
 version = "0.1.0"
-description = "CUHK-SZ Blackboard 任务监控与课件下载 (Claude Code 插件引擎)"
+description = "CUHK-SZ Blackboard 任务监控与课件下载 (Codex / Claude Code 插件引擎)"
 requires-python = ">=3.11"
 dependencies = [
     "curl_cffi>=0.7",
     "beautifulsoup4>=4.12",
     "keyring>=24",
-    "mcp>=1.0",
+    "mcp>=1.9,<2",
 ]
 
 [project.optional-dependencies]
@@ -15,6 +15,7 @@ dev = ["pytest>=8", "ruff>=0.5"]
 
 [project.scripts]
 bbwatch = "bbwatch.cli:main"
+bbwatch-mcp = "bbwatch.mcp_server:main"
 
 [build-system]
 requires = ["setuptools>=68"]

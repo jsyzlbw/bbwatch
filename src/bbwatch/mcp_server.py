@@ -1,10 +1,11 @@
 """bbwatch MCP 服务器（官方 FastMCP 实现，保证协议合规）。
-把能力暴露给 Claude Code 对话式调用：用户说一句话 → Claude 调对应工具。
+把能力暴露给 Codex / Claude Code 等 MCP 客户端对话式调用。
 工具逻辑复用 cli 中已测过的 run_* 函数；store 走 AppPaths(尊重 BBWATCH_HOME)。
 """
 from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 mcp = FastMCP("bbwatch")
 
@@ -30,21 +31,29 @@ def _authed():
     return authed()
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
 def list_tasks() -> str:
     """列出未完成/可跟踪的作业(带编号与完成状态 ○/✓，按截止排序)。
     用户问"我有什么作业/ddl/待办"时调用。"""
     from .cli import format_tasks
 
-    return format_tasks(_store().actionable_tasks(), _now())
+    store = _store()
+    try:
+        return format_tasks(store.actionable_tasks(), _now())
+    finally:
+        store.close()
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
 def list_pending() -> str:
     """列出已提交但未出分(待批改)的作业。用户问"哪些作业交了还没出分 / 待批改 / 等出分"时调用。"""
     from .cli import format_pending
 
-    return format_pending(_store().submitted_ungraded())
+    store = _store()
+    try:
+        return format_pending(store.submitted_ungraded())
+    finally:
+        store.close()
 
 
 @mcp.tool()
@@ -52,7 +61,49 @@ def mark_task_done(n: int, done: bool) -> str:
     """把 list_tasks 中第 n 项标记为完成(done=true)或未完成(done=false)。"""
     from .cli import run_mark_done
 
-    return run_mark_done(_store(), n, done, _now())
+    store = _store()
+    try:
+        return run_mark_done(store, n, done, _now())
+    finally:
+        store.close()
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+def get_status() -> dict:
+    """查看本地数据是否已初始化、最近扫描时间(UTC)及数据/配置路径。
+    不读取账号密码、不登录、不联网；initialized 仅表示本地数据库存在。"""
+    from .config import AppPaths
+
+    paths = AppPaths()
+    initialized = paths.db_path.is_file()
+    last_scan = None
+    if initialized:
+        store = _store()
+        try:
+            last_scan = store.last_scan_time()
+        finally:
+            store.close()
+    return {
+        "initialized": initialized,
+        "last_scan_utc": last_scan,
+        "data_dir": str(paths.root),
+        "database_path": str(paths.db_path),
+        "config_path": str(paths.config_path),
+        "config_exists": paths.config_path.is_file(),
+    }
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+def find_materials(query: str) -> str:
+    """按课程、文件名或路径关键词检索已下载的课件，仅查询本地记录、不联网。"""
+    store = _store()
+    try:
+        hits = store.search_downloads(query)
+        if not hits:
+            return f"未找到匹配 '{query}' 的已下载文件（先下载课件）"
+        return "\n".join(hits)
+    finally:
+        store.close()
 
 
 @mcp.tool()
@@ -64,21 +115,27 @@ def scan_now() -> str:
     from .notifier import MacNotifier
 
     client, store, paths = _authed()
-    cfg = load_config(paths.config_path)
-    return run_scan(
-        client, store, MacNotifier(), now=_now(),
-        course_filter=make_course_filter(cfg), archive_weeks=cfg.archive_overdue_weeks,
-    )
+    try:
+        cfg = load_config(paths.config_path)
+        return run_scan(
+            client, store, MacNotifier(), now=_now(),
+            course_filter=make_course_filter(cfg), archive_weeks=cfg.archive_overdue_weeks,
+        )
+    finally:
+        store.close()
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True))
 def list_courses() -> str:
     """列出本学期在读课程(带编号)。"""
     from .cli import format_courses
 
-    client, _store_unused, _paths = _authed()
-    me = client.get_me()
-    return format_courses([c for c in client.list_courses(me.id) if c.is_active])
+    client, store, _paths = _authed()
+    try:
+        me = client.get_me()
+        return format_courses([c for c in client.list_courses(me.id) if c.is_active])
+    finally:
+        store.close()
 
 
 @mcp.tool()
@@ -91,12 +148,15 @@ def download_course(ref: str, dest: str = "") -> str:
     from .config import load_config
 
     client, store, paths = _authed()
-    me = client.get_me()
-    active = [c for c in client.list_courses(me.id) if c.is_active]
-    course = pick_course(active, ref)
-    cfg = load_config(paths.config_path)
-    d = Path(dest) if dest else Path(cfg.download_dest).expanduser()
-    return run_download(client, store, course, d, now=_now())
+    try:
+        me = client.get_me()
+        active = [c for c in client.list_courses(me.id) if c.is_active]
+        course = pick_course(active, ref)
+        cfg = load_config(paths.config_path)
+        d = Path(dest) if dest else Path(cfg.download_dest).expanduser()
+        return run_download(client, store, course, d, now=_now())
+    finally:
+        store.close()
 
 
 def main() -> None:

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "bbwatch": {
+      "command": "bbwatch-mcp",
+      "args": []
+    }
+  }
+}

@@ -1,5 +1,7 @@
 # 安装指南
 
+**Codex 桌面应用／CLI：** 请使用 [CODEX.md](CODEX.md) 中的全局安装器。下面是保留的 Claude Code 安装流程；其中的 Setup 与 SessionStart 钩子不用于 Codex。
+
 > 仓库：`https://github.com/jsyzlbw/bbwatch` ｜ 插件市场名 `bill-plugins`（见 `.claude-plugin/marketplace.json`）。
 > 前置：已安装 **Claude Code CLI** 与 **Python ≥ 3.11**（macOS / Linux）。
 

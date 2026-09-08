@@ -1,0 +1,23 @@
+{
+  "name": "bbwatch",
+  "version": "0.1.0",
+  "description": "港中深 Blackboard 作业、截止日期、课程更新与课件下载助手。",
+  "author": {
+    "name": "Bill",
+    "url": "https://github.com/jsyzlbw"
+  },
+  "repository": "https://github.com/jsyzlbw/bbwatch",
+  "license": "MIT",
+  "keywords": ["blackboard", "cuhksz", "homework", "codex", "mcp"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "bbwatch · Blackboard 助手",
+    "shortDescription": "查作业、看 ddl、扫描课程更新、批量下载课件。",
+    "longDescription": "通过本机 MCP 管理港中深 Blackboard：查询作业与待批改状态、标记完成、按需扫描更新、增量下载课件并检索本地文件。账号凭据保存在本机钥匙串，数据与 Claude Code 版本兼容。默认不创建后台扫描或定时任务。",
+    "developerName": "Bill",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "defaultPrompt": ["我还有什么作业和 ddl？", "扫描 Blackboard，看看有什么更新。", "把 MAT3007 的课件下载到本机。"]
+  },
+  "mcpServers": "./.mcp.json"
+}

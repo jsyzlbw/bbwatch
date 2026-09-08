@@ -30,11 +30,11 @@ def _identity_summary(client: BbClient) -> str:
 
 def _authed():
     """会话缓存版登录：复用 cookie，失效才重登。返回 (client, store, paths)。"""
+    creds = load_credentials()
+    transport = CurlCffiTransport()
     paths = AppPaths()
     paths.ensure_dirs()
     store = Store(paths.db_path)
-    creds = load_credentials()
-    transport = CurlCffiTransport()
 
     def relogin():
         adfs_login(transport, creds)
@@ -46,8 +46,12 @@ def _authed():
         except Exception:  # noqa: BLE001
             return False
 
-    ensure_session(transport, store, creds, paths.session_path, now=now_utc(), verify=verify)
-    return BbClient(transport, relogin=relogin), store, paths
+    try:
+        ensure_session(transport, store, creds, paths.session_path, now=now_utc(), verify=verify)
+        return BbClient(transport, relogin=relogin), store, paths
+    except BaseException:
+        store.close()
+        raise
 
 
 def run_whoami(transport: Transport, creds: Credentials, login_fn=adfs_login) -> str:
