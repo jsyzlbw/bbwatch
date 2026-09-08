@@ -112,8 +112,10 @@ class Store:
         )
 
     def last_scan_time(self) -> str | None:
+        """最近一次成功或部分完成的扫描；失败尝试不代表数据已更新。"""
         row = self._conn.execute(
             "SELECT finished_at FROM scan_run WHERE finished_at IS NOT NULL "
+            "AND status IN ('ok', 'partial', 'success') "
             "ORDER BY id DESC LIMIT 1"
         ).fetchone()
         return row["finished_at"] if row else None

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from .diff import diff_announcements, diff_columns, diff_contents
 from .models import Course
+from .store import now_utc
 
 
 @dataclass
@@ -66,36 +67,42 @@ def scan(
     include_contents: bool = True,
     fetch_workers: int = 1,
     client_factory: Callable[[], object] | None = None,
+    finished_at_fn: Callable[[], str] | None = None,
 ) -> ScanResult:
+    completion_time = finished_at_fn or now_utc
     scan_id = store.start_scan(now)
     res = ScanResult()
 
-    courses = [c for c in client.list_courses(uid) if c.is_active]
-    if current_terms is not None:
-        courses = [c for c in courses if c.term_id in current_terms]
-    if course_filter is not None:
-        courses = [c for c in courses if course_filter(c)]
-    res.courses_scanned = len(courses)
+    try:
+        courses = [c for c in client.list_courses(uid) if c.is_active]
+        if current_terms is not None:
+            courses = [c for c in courses if c.term_id in current_terms]
+        if course_filter is not None:
+            courses = [c for c in courses if course_filter(c)]
+        res.courses_scanned = len(courses)
 
-    # ---- 阶段一：抓取(可并行；每线程独立 client) ----
-    def _fetch(course: Course) -> _Bundle:
-        c = client_factory() if (client_factory and fetch_workers > 1) else client
-        return _fetch_course(c, course, uid, include_contents)
+        # ---- 阶段一：抓取(可并行；每线程独立 client) ----
+        def _fetch(course: Course) -> _Bundle:
+            c = client_factory() if (client_factory and fetch_workers > 1) else client
+            return _fetch_course(c, course, uid, include_contents)
 
-    if fetch_workers > 1 and client_factory and len(courses) > 1:
-        with ThreadPoolExecutor(max_workers=fetch_workers) as ex:
-            bundles = list(ex.map(_fetch, courses))
-    else:
-        bundles = [_fetch(c) for c in courses]
+        if fetch_workers > 1 and client_factory and len(courses) > 1:
+            with ThreadPoolExecutor(max_workers=fetch_workers) as ex:
+                bundles = list(ex.map(_fetch, courses))
+        else:
+            bundles = [_fetch(c) for c in courses]
 
-    # ---- 阶段二：串行 diff + 写库(保证不变量) ----
-    for b in bundles:
-        res.new_events += _process_columns(store, b, scan_id, now, res.failures)
-        res.new_events += _process_announcements(store, b, scan_id, now, res.failures)
-        if include_contents:
-            res.new_events += _process_contents(store, b, scan_id, now, res.failures)
+        # ---- 阶段二：串行 diff + 写库(保证不变量) ----
+        for b in bundles:
+            res.new_events += _process_columns(store, b, scan_id, now, res.failures)
+            res.new_events += _process_announcements(store, b, scan_id, now, res.failures)
+            if include_contents:
+                res.new_events += _process_contents(store, b, scan_id, now, res.failures)
 
-    store.finish_scan(scan_id, "partial" if res.failures else "ok", now)
+        store.finish_scan(scan_id, "partial" if res.failures else "ok", completion_time())
+    except BaseException:
+        store.finish_scan(scan_id, "failed", completion_time())
+        raise
     return res
 
 

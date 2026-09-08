@@ -1153,6 +1153,16 @@
       let LOAD_SEQUENCE = 0;
       let LOAD_ERROR = false;
       let scanTimer = null;
+      let watchedScanId = null;
+      let scanWaitStarted = null;
+      let expiredScanId = null;
+      let changedScanStatus = null;
+      let scanNotice = "";
+      let scanNoticeKind = "warning";
+      let scanPollInFlight = false;
+      let scanRequestPending = false;
+      let pageActive = true;
+      const SCAN_WAIT_LIMIT = 16 * 60000;
       const SAVING = new Set();
       const OPEN_GROUPS = new Set();
       const $ = (s) => document.querySelector(s);
@@ -1215,6 +1225,13 @@
         if (!due) return "时间待定";
         const r = rel(due, now);
         return due < now ? `逾期 ${r.n}` : `${r.n}后截止`;
+      }
+      function elapsedSince(date, now) {
+        const seconds = Math.max(0, (now - date) / 1000);
+        if (seconds < 60) return "刚刚";
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}分钟前`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}小时前`;
+        return `${Math.floor(seconds / 86400)}天前`;
       }
       function themeNow() {
         return document.documentElement.getAttribute("data-theme") || "light";
@@ -1338,32 +1355,27 @@
           focus.setAttribute("aria-label", label);
           focus.innerHTML = `<span class="deadline-symbol">${icon("calendar")}</span><div><p class="deadline-label">${label}</p><div class="deadline-name"><span>${esc(courseShort(next.course || next.course_id))}</span>${esc(next.name)}</div></div><div class="deadline-time">${esc(deadlineStatus(due, now))}<small>${esc(fmt(due))}</small></div>`;
         }
+        const last = parseUTC(STATE.last_scan);
+        const stale = last && now - last > 12 * 3600000;
         let html = `<div class="section-heading"><h2 id="boardHeading" tabindex="-1">待完成<span class="count">${count(todo.length)}</span></h2><span class="sort-label">按截止时间排序</span></div>`;
         if (todo.length)
           html += `<div class="list">${todo.map(taskRow).join("")}</div>`;
         else if (!STATE.last_scan)
           html += `<div class="empty"><span class="empty-symbol">${icon("calendar")}</span><h3>从第一次同步开始</h3><p>扫描 Blackboard，将课程与作业整理到这里。</p><button class="scan" type="button" data-action="scan" ${SCAN_ACTIVE ? "disabled" : ""}>${icon("refresh")}${SCAN_ACTIVE ? "扫描中" : "扫描课程"}</button></div>`;
         else
-          html += `<div class="empty"><span class="empty-symbol">${icon("check")}</span><h3>暂时没有待完成的作业</h3><p>${pend.length ? "已提交的作业，可以在下方查看批改进度。" : "清单已整理好，留一点时间给自己。"}</p></div>`;
+          html += `<div class="empty"><span class="empty-symbol">${icon("check")}</span><h3>暂时没有待完成的作业</h3><p>${stale ? "当前缓存中没有待完成的作业，请扫描确认最新情况。" : pend.length ? "已提交的作业，可以在下方查看批改进度。" : "清单已整理好，留一点时间给自己。"}</p></div>`;
         html += `<div class="groups">${group("pw", "已提交 · 待批改", pend, pendingRow)}${group("dw", "已完成", done, taskRow)}${group("hw", "已隐藏", hidden, hiddenRow)}</div>`;
         $("#board").innerHTML = html;
         $("#board").setAttribute("aria-busy", "false");
-        const last = parseUTC(STATE.last_scan);
         $("#lastScan").textContent = last
-          ? `上次扫描 · ${rel(last, now).n}前`
+          ? `上次扫描 · ${elapsedSince(last, now)}`
           : "尚未扫描";
         $("#demoLabel").hidden = !STATE.demo;
         if (!LOAD_ERROR) {
-          if (
-            last &&
-            now - last > 12 * 3600000 &&
-            todo.some((t) => {
-              const d = parseUTC(t.due_utc);
-              return d && d > now && d - now < 72 * 3600000;
-            })
-          )
+          if (scanNotice) notice(scanNotice, scanNoticeKind, !SCAN_ACTIVE);
+          else if (stale)
             notice(
-              "清单超过 12 小时未更新，近期有作业截止，建议扫描一次。",
+              "清单超过 12 小时未更新；当前记录可能不完整，建议扫描一次。",
               "warning",
               false,
             );
@@ -1387,8 +1399,11 @@
           });
           if (!response.ok) throw new Error("请求未能完成");
           const data = await response.json();
-          if (options.method === "POST" && data.ok !== true)
-            throw new Error("操作未能保存");
+          if (options.method === "POST" && data.ok !== true) {
+            const error = new Error("操作未能保存");
+            error.responseData = data;
+            throw error;
+          }
           return data;
         } finally {
           clearTimeout(timeout);
@@ -1418,6 +1433,7 @@
           if (seq !== LOAD_SEQUENCE) return false;
           STATE = data;
           LOAD_ERROR = false;
+          if (!scanRequestPending) syncScanStatus(data.scan);
           render();
           return true;
         } catch (_) {
@@ -1508,37 +1524,124 @@
           button.setAttribute("aria-busy", String(busy));
         }
       }
+      function validScanStatus(scan) {
+        return (
+          scan &&
+          ["idle", "running", "succeeded", "partial", "failed"].includes(scan.state) &&
+          (scan.state === "idle" || scan.state === "failed" ||
+            (typeof scan.id === "string" && scan.id.length > 0))
+        );
+      }
+      function stopScanPolling() {
+        clearTimeout(scanTimer);
+        scanTimer = null;
+      }
+      function scanWaitExpired() {
+        if (scanWaitStarted === null || Date.now() - scanWaitStarted < SCAN_WAIT_LIMIT)
+          return false;
+        expiredScanId = watchedScanId;
+        stopScanPolling();
+        setScanBusy(false);
+        scanNotice = "等待扫描结果已超过 16 分钟，暂时无法确认是否完成。清单会定期重新连接，也可点击重新连接查看。";
+        scanNoticeKind = "warning";
+        notice(scanNotice, scanNoticeKind);
+        return true;
+      }
+      function scheduleScanPoll() {
+        if (!SCAN_ACTIVE || scanTimer !== null || scanPollInFlight ||
+            !pageActive || document.hidden) return;
+        scanTimer = setTimeout(async () => {
+          scanTimer = null;
+          if (!SCAN_ACTIVE || !pageActive || document.hidden || scanWaitExpired()) return;
+          scanPollInFlight = true;
+          try {
+            await load();
+          } finally {
+            scanPollInFlight = false;
+            scheduleScanPoll();
+          }
+        }, 3000);
+      }
+      function syncScanStatus(scan) {
+        if (!validScanStatus(scan)) {
+          stopScanPolling();
+          setScanBusy(false);
+          scanNotice = "当前看板服务未提供扫描状态。请重启本机 bbwatch 看板，再查看或发起扫描。";
+          scanNoticeKind = "warning";
+          return;
+        }
+        const statusKey = `${scan.state}:${scan.id ?? ""}`;
+        // Adopt the latest running operation; a different terminal record cannot
+        // establish how the previously watched operation ended.
+        if (watchedScanId && scan.id !== watchedScanId && scan.state !== "running") {
+          stopScanPolling();
+          setScanBusy(false);
+          watchedScanId = null;
+          scanWaitStarted = null;
+          expiredScanId = null;
+          changedScanStatus = statusKey;
+          scanNotice = "扫描记录已变化，之前结果无法确认；当前显示最新清单。";
+          scanNoticeKind = "warning";
+          return;
+        }
+        if (scan.state === "running") {
+          if (scan.id === expiredScanId) return;
+          changedScanStatus = null;
+          if (watchedScanId !== scan.id || scanWaitStarted === null) {
+            watchedScanId = scan.id;
+            scanWaitStarted = Date.now();
+          }
+          if (!pageActive) return;
+          setScanBusy(true);
+          scanNotice = `${scan.message || "正在扫描课程。"} 清单会自动更新，下方保留上次读取的记录。`;
+          scanNoticeKind = "warning";
+          if (!scanWaitExpired()) scheduleScanPoll();
+          return;
+        }
+        const completedRequest = watchedScanId && scan.id === watchedScanId;
+        stopScanPolling();
+        setScanBusy(false);
+        watchedScanId = null;
+        scanWaitStarted = null;
+        expiredScanId = null;
+        if (changedScanStatus === statusKey) return;
+        changedScanStatus = null;
+        scanNotice = scan.state === "failed"
+          ? scan.message || "扫描未能完成，请检查登录状态后重试。"
+          : scan.state === "partial"
+            ? scan.message || "扫描部分完成，仍有课程无法读取，请稍后重试。"
+            : "";
+        scanNoticeKind = scan.state === "failed" ? "error" : "warning";
+        if (completedRequest && scan.state === "succeeded")
+          toast(scan.message || "扫描已完成，清单已更新。");
+      }
       async function doScan() {
         if (SCAN_ACTIVE) return;
+        if (STATE && !validScanStatus(STATE.scan)) {
+          syncScanStatus(STATE.scan);
+          notice(scanNotice, scanNoticeKind);
+          return;
+        }
         setScanBusy(true);
-        const previous = STATE?.last_scan;
-        let accepted = false;
+        scanRequestPending = true;
         try {
-          await request("/api/scan", { method: "POST" });
-          accepted = true;
-          toast("扫描请求已发送，清单会自动刷新。");
-          let attempts = 0;
-          const poll = async () => {
-            if (!SCAN_ACTIVE) return;
-            await load();
-            attempts++;
-            if (STATE?.last_scan && STATE.last_scan !== previous) {
-              setScanBusy(false);
-              toast("扫描记录已更新，请查看当前清单。");
-              return;
-            }
-            if (attempts >= 16) {
-              setScanBusy(false);
-              toast("尚未收到新的扫描记录，可稍后重新连接查看。");
-              return;
-            }
-            scanTimer = setTimeout(poll, 3000);
-          };
-          scanTimer = setTimeout(poll, 3000);
-        } catch (_) {
-          toast("扫描请求未能确认，请稍后重试。");
+          const result = await request("/api/scan", { method: "POST" });
+          watchedScanId = null;
+          scanWaitStarted = null;
+          expiredScanId = null;
+          syncScanStatus(result.scan);
+        } catch (error) {
+          stopScanPolling();
+          setScanBusy(false);
+          if (validScanStatus(error.responseData?.scan))
+            syncScanStatus(error.responseData.scan);
+          else {
+            scanNotice = "暂时无法确认扫描请求，请稍后重新连接查看；当前清单未作更改。";
+            scanNoticeKind = "error";
+          }
         } finally {
-          if (!accepted) setScanBusy(false);
+          scanRequestPending = false;
+          if (scanNotice) notice(scanNotice, scanNoticeKind, !SCAN_ACTIVE);
         }
       }
       function toast(message) {
@@ -1565,19 +1668,23 @@
       });
       setThemeIcon();
       load();
-      setInterval(() => {
-        if (STATE && !document.hidden) render();
+      setInterval(async () => {
+        if (pageActive && !document.hidden) await load();
       }, 60000);
       window.addEventListener("pagehide", () => {
-        clearTimeout(scanTimer);
-        scanTimer = null;
+        pageActive = false;
+        stopScanPolling();
         setScanBusy(false);
       });
       window.addEventListener("pageshow", (event) => {
+        pageActive = true;
         if (event.persisted) {
-          setScanBusy(false);
           load();
         }
+      });
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) stopScanPolling();
+        else if (pageActive) load();
       });
     </script>
   </body>

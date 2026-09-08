@@ -57,6 +57,15 @@ def test_deadlines_always_display_china_time_and_roll_over_dates():
     assert frontend("helpers")["times"] == ["09/09 00:05", "09/09 00:05", "01/01 07:59"]
 
 
+def test_last_scan_age_shows_just_now_then_completed_minutes_hours_and_days():
+    assert frontend("elapsed_times") == [
+        "上次扫描 · 刚刚", "上次扫描 · 刚刚", "上次扫描 · 刚刚",
+        "上次扫描 · 1分钟前", "上次扫描 · 1分钟前", "上次扫描 · 59分钟前",
+        "上次扫描 · 1小时前", "上次扫描 · 1小时前", "上次扫描 · 23小时前",
+        "上次扫描 · 1天前", "上次扫描 · 1天前",
+    ]
+
+
 def test_assignment_links_encode_ids_and_fall_back_to_course_grades():
     assert frontend("helpers")["links"] == [
         ("https://bb.cuhk.edu.cn/webapps/assignment/uploadAssignment"
@@ -172,3 +181,138 @@ def test_disclosure_and_pending_shortcut_controls_support_keyboard_activation():
         assert tag in {"button", "input", "summary"} or (
             tag == "a" and attrs.get("href")
         ), f"Clickable {tag} lacks native keyboard behavior: {attrs.get('onclick')}"
+
+
+def test_scan_continues_beyond_twenty_polls_and_rejects_duplicate_launches():
+    result = frontend("flow_long_running")
+    assert result["polls"] == 22
+    assert result["active"] is True
+    assert result["scanDisabled"] is True
+    assert result["pollTimers"] == 1
+    assert result["noticeVisible"] is True
+    assert "扫描" in result["notice"]
+    assert len([r for r in result["requests"] if r.get("method") == "POST"]) == 1
+
+
+def test_scan_completion_after_twenty_polls_updates_without_a_manual_reload():
+    result = frontend("flow_long_completion")
+    assert result["polls"] == 22
+    assert result["beforeCompletion"]["active"] is True
+    assert result["state"]["scan"]["state"] == "succeeded"
+    assert result["active"] is False
+    assert result["pollTimers"] == 0
+    assert len([r for r in result["requests"] if r.get("method") == "POST"]) == 1
+
+
+@pytest.mark.parametrize("terminal", ["succeeded", "failed", "partial"])
+def test_explicit_scan_result_finishes_even_when_last_scan_timestamp_is_unchanged(terminal):
+    result = frontend(f"flow_{terminal}")
+    assert result["state"] == result["expectedState"]
+    assert result["active"] is False
+    assert result["scanDisabled"] is False
+    assert result["pollTimers"] == 0
+    if terminal != "succeeded":
+        assert result["noticeVisible"] is True
+        assert result["state"]["scan"]["message"] in result["notice"]
+
+
+def test_polling_connection_failure_preserves_tasks_and_can_recover():
+    result = frontend("flow_recover_get")
+    failure = result["duringFailure"]
+    assert failure["active"] is True
+    assert failure["pollTimers"] == 1
+    assert failure["state"]["last_scan"] == "2026-09-08T01:00:00.000Z"
+    assert_failure_is_visible(failure)
+    assert result["state"] == result["expectedState"]
+    assert result["active"] is False
+
+
+def test_loading_a_running_scan_resumes_polling_without_launching_another():
+    result = frontend("flow_reload_running")
+    assert result["active"] is True
+    assert result["scanDisabled"] is True
+    assert result["pollTimers"] == 1
+    assert all(r.get("method", "GET") == "GET" for r in result["requests"])
+
+
+@pytest.mark.parametrize("phase", ["restore_running", "hide_pending_post"])
+def test_restored_page_resumes_server_running_state_after_cancelling_hidden_polling(phase):
+    result = frontend(f"flow_{phase}")
+    assert result["hidden"]["active"] is False
+    assert result["hidden"]["pollTimers"] == 0
+    assert result["active"] is True
+    assert result["pollTimers"] == 1
+    assert len([r for r in result["requests"] if r.get("method") == "POST"]) == 1
+
+
+@pytest.mark.parametrize("visibility", ["periodic", "periodic_hidden"])
+def test_periodic_refresh_reads_fresh_data_only_while_page_is_visible(visibility):
+    result = frontend(f"flow_{visibility}")
+    assert result["state"] == result["expectedState"]
+    assert all(r.get("method", "GET") == "GET" for r in result["requests"])
+    assert bool(result["requests"]) is (visibility == "periodic")
+
+
+def test_scan_wait_limit_reports_unknown_completion_and_stops_fast_polling():
+    result = frontend("flow_wait_timeout")
+    assert result["active"] is False
+    assert result["pollTimers"] == 0
+    assert result["noticeVisible"] is True
+    assert re.search(r"无法确认|尚未确认|未确认|等待.*超|等待.*久", result["notice"])
+
+
+def test_periodic_refresh_can_resolve_a_scan_after_the_client_wait_limit():
+    result = frontend("flow_timeout_recovery")
+    assert result["expired"]["active"] is False
+    assert result["expired"]["noticeVisible"] is True
+    assert result["stillRunning"]["active"] is False
+    assert result["stillRunning"]["pollTimers"] == 0
+    assert result["state"]["scan"]["state"] == "succeeded"
+    assert "16 分钟" not in result["notice"]
+    assert result["active"] is False
+
+
+def test_replaced_scan_stops_waiting_with_persistent_unconfirmed_result_warning():
+    result = frontend("flow_unrelated_terminal")
+    assert result["active"] is False
+    assert result["pollTimers"] == 0
+    assert result["noticeVisible"] is True
+    assert "扫描记录已变化" in result["notice"]
+    assert "之前结果无法确认" in result["notice"]
+    assert "当前显示最新清单" in result["notice"]
+    assert "Earlier scan finished." not in result["text"]
+
+
+def test_newer_authoritative_running_scan_is_adopted_and_can_finish():
+    result = frontend("flow_newer_running")
+    assert result["newer"]["active"] is True
+    assert "另一批课程" in result["newer"]["notice"]
+    assert result["state"]["scan"]["id"] == "newer-scan"
+    assert result["active"] is False
+    assert result["pollTimers"] == 0
+
+
+def test_old_backend_explains_missing_scan_status_instead_of_claiming_completion():
+    result = frontend("flow_old_backend")
+    assert result["noticeVisible"] is True
+    assert "重启" in result["notice"]
+    assert result["active"] is False
+
+
+@pytest.mark.parametrize("response", ["launch_failure", "legacy_post"])
+def test_unaccepted_or_unverifiable_scan_response_shows_persistent_explanation(response):
+    result = frontend(f"flow_{response}")
+    assert result["active"] is False
+    assert result["pollTimers"] == 0
+    assert result["noticeVisible"] is True
+    assert ("无法启动" if response == "launch_failure" else "重启") in result["notice"]
+    assert result["state"]["tasks"][0]["done"] is False
+
+
+def test_stale_empty_task_list_warns_that_scan_results_are_outdated():
+    result = frontend("flow_stale_empty")
+    assert result["state"]["tasks"] == []
+    assert result["noticeVisible"] is True
+    assert re.search(r"12.*小时|未更新|过期", result["notice"])
+    assert "当前缓存中没有待完成的作业，请扫描确认最新情况。" in result["text"]
+    assert "清单已整理好" not in result["text"]
