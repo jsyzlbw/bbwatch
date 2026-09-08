@@ -2,10 +2,11 @@
 description: 配置 bbwatch（把学校账号密码存入 macOS 钥匙串）
 ---
 
-向用户索取 `学号@link.cuhk.edu.cn` 与密码。拿到后，**把凭据放进环境变量**（避免明文出现在命令参数里）并运行：
+帮助用户在本机终端交互配置账号。不要要求用户把密码发送到聊天中，也不要把凭据写进命令示例或文件。
 
-```
-BBWATCH_USERNAME='学号@link.cuhk.edu.cn' BBWATCH_PASSWORD='密码' "${CLAUDE_PLUGIN_DATA}/.venv/bin/bbwatch" setup
-```
+1. 从当前插件环境的 `CLAUDE_PLUGIN_DATA` 或实际初始化输出确认引擎路径，检查 `<实际路径>/.venv/bin/bbwatch` 是否存在。不要猜测缓存路径。
+2. 给用户一条可复制的完整绝对路径命令，让用户在本机终端运行 `bbwatch setup`。普通终端未必有 `CLAUDE_PLUGIN_DATA`，因此提供命令前要替换成已确认的实际路径并正确引用。
+3. 说明终端会提示输入学校账号（形如 `学号@link.cuhk.edu.cn`）和密码，密码输入不回显，由系统密钥环保存。
+4. 用户完成配置后，指导运行同一路径下的 `bbwatch whoami` 验证学校登录，再按需 `scan` 建立清单。不要仅凭安装成功就声称账号已验证。
 
-随后运行 `"${CLAUDE_PLUGIN_DATA}/.venv/bin/bbwatch" doctor` 确认配置成功。提醒用户：密码只存于本机 macOS 钥匙串。
+若引擎缺失，参考仓库 `INSTALL.md` 完成插件初始化后再配置账号。macOS 使用钥匙串；Linux 需要可用的系统密钥环。

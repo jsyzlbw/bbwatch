@@ -1,27 +1,46 @@
-# bbwatch：Codex 本机全局版
+# Codex 安装指南
 
 在 Codex 桌面应用或 Codex CLI 中，通过自然语言管理港中深 Blackboard。兼容已有 Claude Code 版本的数据与凭据。这里的“全局”是当前 macOS 用户的所有 Codex 项目，不需要管理员权限。
 
 这是 **Codex 本机插件**。ChatGPT 网页版的远程 MCP 接入需要额外部署 HTTPS 服务；本安装器不会创建云端服务或公开本机端口。
 
-## 安装
+[返回首页](README.md) · [Claude Code 安装](INSTALL.md)
 
-需要支持 `codex plugin` 的 Codex CLI，以及 Python 3.11 或更新版本。macOS 自带的 Python 可能较旧，先检查版本；本机验证使用 Python 3.12。
+## 开始前
 
-在本仓库目录运行：
-
-```bash
-python3.12 scripts/install_codex.py --dry-run
-python3.12 scripts/install_codex.py
-```
-
-如果找不到 Codex，可显式传入路径：
+面向 **macOS**。需要 Git、支持 `codex plugin` 的 Codex CLI，以及 Python 3.11 或更新版本。即使平时使用 Codex 桌面应用，安装器也需要调用 Codex CLI 完成插件注册。
 
 ```bash
-python3.12 scripts/install_codex.py --codex /opt/homebrew/bin/codex
+git --version
+codex plugin --help
+python3 --version
 ```
 
-安装器会安装依赖与引擎、复制 Codex 插件并调用 `codex plugin add`。它保留其他插件和 Codex 配置；遇到同名但非本安装器管理的目录或命令会停止，不覆盖。全程不读取学校密码、不登录学校、不扫描、不添加自动化或后台守护进程。
+下面以 `python3` 为例。如果它低于 3.11，请改用已经安装的新版 Python，例如 `python3.12`；本文对应命令都要使用同一个解释器。
+
+## 1. 下载项目并安装
+
+```bash
+git clone https://github.com/jsyzlbw/bbwatch.git
+cd bbwatch
+python3 scripts/install_codex.py --dry-run
+python3 scripts/install_codex.py
+```
+
+如果已经下载了本仓库，直接进入仓库目录运行最后两行。`--dry-run` 只检查环境并显示安装位置；确认检查通过后，下一行才执行安装。
+
+安装器会安装依赖与引擎、复制 Codex 插件并注册到当前用户的本地插件市场，所有 Codex 项目都可使用。它会保留其他插件和 Codex 配置；遇到同名但非本安装器管理的目录或命令时会停止，避免覆盖。
+
+**安装过程不需要学校密码，也不会登录、扫描或创建后台监控。**
+
+如果终端找不到 `codex`，可向安装器提供你机器上的实际 Codex CLI 路径。例如，确实安装在下面位置时使用：
+
+```bash
+python3 scripts/install_codex.py --codex /opt/homebrew/bin/codex
+```
+
+<details>
+<summary>查看安装位置和工作原理</summary>
 
 | 位置 | 用途 |
 | --- | --- |
@@ -33,7 +52,29 @@ python3.12 scripts/install_codex.py --codex /opt/homebrew/bin/codex
 
 安装后的 MCP 配置使用运行环境的绝对路径，因此不依赖 Codex 的 PATH，也不依赖本仓库所在目录。无需另行运行 `codex mcp add`。如果终端不识别 `bbwatch`，可直接使用 `~/.local/bin/bbwatch`；插件不受影响。
 
-## 首次使用
+</details>
+
+## 2. 在本机终端配置账号
+
+安装完成后，在终端依次运行：
+
+```bash
+~/.local/bin/bbwatch setup
+~/.local/bin/bbwatch whoami
+~/.local/bin/bbwatch scan
+```
+
+| 命令 | 作用 |
+| --- | --- |
+| `setup` | 按提示输入学校账号和密码；密码不回显，并存入本机钥匙串 |
+| `whoami` | 实际登录学校，验证账号是否可用 |
+| `scan` | 第一次扫描 Blackboard，建立本地课程和作业清单 |
+
+**无需把密码发进聊天。** 如果已经用过 Claude Code 版，两个版本默认共用钥匙串服务 `bbwatch` 和 `~/.bbwatch` 数据目录，通常可以跳过 `setup`，直接验证登录并扫描。
+
+安装成功不代表学校登录成功；首次扫描之前，本地空清单也不等于学校没有作业。
+
+## 3. 新建 Codex 任务，开始对话
 
 **新建一个 Codex 任务**加载新插件。可以直接说：
 
@@ -45,17 +86,9 @@ python3.12 scripts/install_codex.py --codex /opt/homebrew/bin/codex
 - “查找我已经下载的 slides。”
 - “把第 1 个作业标记为完成。”
 
-安装不代表学校账号已验证。如果还没配置账号，请在本机终端输入：
+**Codex 版默认按需运行。** 查询作业读取本地缓存；要求扫描或最新状态时才实时刷新。开启 Codex 不会自动扫描。需要定时监控时明确提出周期和通知方式后再配置。
 
-```bash
-~/.local/bin/bbwatch setup
-~/.local/bin/bbwatch whoami
-~/.local/bin/bbwatch scan
-```
-
-`setup` 在终端提示输入账号和密码，密码不回显并存入本机钥匙串。无需把密码发进聊天。已有 Claude Code 版使用同一个钥匙串服务 `bbwatch`，通常可以直接复用；`whoami` 才会实际验证学校登录。扫描之前，本地空清单不等于学校没有作业。
-
-默认按需运行。查询作业读取本地缓存；要求扫描或最新状态时才实时刷新。开启 Codex 不会自动扫描。需要定时监控时明确提出周期和通知方式后再配置。
+Claude Code 版原有的 SessionStart 自动刷新仍然保留；安装 Codex 版不会停用它。两个版本的刷新方式不同。
 
 ## 网页看板
 
@@ -67,13 +100,16 @@ python3.12 scripts/install_codex.py --codex /opt/homebrew/bin/codex
 
 ## 更新、检查与移除
 
-更新本仓库后再次运行安装器即可。安装器会刷新同版本引擎和插件缓存版本，然后重新注册；更新后新建 Codex 任务。默认保留任务、配置和账号凭据。
+在最初下载的 `bbwatch` 仓库目录中更新并重新安装；完成后新建 Codex 任务。默认保留任务、配置和账号凭据。
 
 ```bash
-python3.12 scripts/install_codex.py
+git pull --ff-only
+python3 scripts/install_codex.py
 codex plugin list --json
 ~/.local/bin/bbwatch doctor
 ```
+
+安装器会刷新引擎和插件缓存版本，然后重新注册；即使包版本号未变，也会安装仓库中的新代码。如果第一次安装使用了 `python3.12` 或 `--codex` 路径，更新时沿用相同参数。
 
 本地市场不存在时使用 `personal`；已经存在时沿用其合法名称和显示名称。只移除 Codex 插件可运行：
 
@@ -90,7 +126,7 @@ Codex 包位于 `plugins/bbwatch/`；原有 `.claude-plugin/`、根目录 `.mcp.
 引擎使用 FastMCP 1.x，依赖限定为 `mcp>=1.9,<2`；MCP 2.x 的旧导入入口不兼容。八个工具分别为 `get_status`、`list_tasks`、`list_pending`、`mark_task_done`、`scan_now`、`list_courses`、`download_course` 和 `find_materials`。
 
 ```bash
-python3.12 -m venv .venv
+python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[dev]'
 PYTHONPATH=src .venv/bin/python -m pytest -o addopts='' -q
 ```
