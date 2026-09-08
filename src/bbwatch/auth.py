@@ -4,7 +4,7 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from .errors import AuthError, CredentialError
+from .errors import AuthError, CredentialError, TransportError
 from .secrets import Credentials
 from .transport import Transport
 
@@ -53,9 +53,13 @@ def login(transport: Transport, creds: Credentials) -> None:
     if callable(clear):
         clear()
     r1 = transport.request("GET", AUTHORIZE_URL)
+    if r1.status != 200:
+        raise TransportError(f"学校登录页面暂时不可用：HTTP {r1.status}，请稍后重试")
     action, fields = parse_adfs_form(r1.text, base=r1.url or AUTHORIZE_URL)
     data = build_login_post(fields, creds.username, creds.password)
     r2 = transport.request("POST", action, data=data, allow_redirects=True)
+    if r2.status != 200:
+        raise TransportError(f"学校登录服务暂时不可用：HTTP {r2.status}，请稍后重试")
     # 注意用 hostname（不含端口）比较：真实响应的 netloc 可能是 bb.cuhk.edu.cn:443
     if urlparse(r2.url).hostname != BB_HOST:
         low = r2.text.lower()

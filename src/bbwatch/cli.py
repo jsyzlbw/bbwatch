@@ -7,9 +7,10 @@ from datetime import timedelta
 from pathlib import Path
 
 from .auth import login as adfs_login
-from .bbclient import BbClient
+from .bbclient import API, BB, BbClient
 from .config import DEFAULT_CONFIG_TOML, AppPaths, load_config, make_course_filter
 from .downloader import mirror
+from .errors import TransportError
 from .notifier import MacNotifier, deliver_pending
 from .scanner import scan
 from .secrets import Credentials, load_credentials, store_credentials
@@ -41,10 +42,16 @@ def _authed():
         save_session(transport, paths.session_path)
 
     def verify(t):
-        try:
-            return BbClient(t).get_me() is not None
-        except Exception:  # noqa: BLE001
+        # get_me() 的 401 与网络错误同属 TransportError，此处先按响应状态区分。
+        response = t.request("GET", f"{BB}{API}/users/me", headers={"Accept": "application/json"})
+        if response.status == 401:
             return False
+        if response.status != 200:
+            raise TransportError(f"Blackboard 会话验证失败：HTTP {response.status}")
+        identity = response.json()
+        if not isinstance(identity, dict) or not identity.get("id"):
+            raise TransportError("Blackboard 会话验证返回了无效的用户信息，请稍后重试")
+        return True
 
     try:
         ensure_session(transport, store, creds, paths.session_path, now=now_utc(), verify=verify)

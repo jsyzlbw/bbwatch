@@ -1,11 +1,17 @@
 import os
 import stat
+from unittest.mock import Mock
 
 import pytest
 
 from bbwatch import session as sess
 from bbwatch.bbclient import BbClient
-from bbwatch.errors import AuthCircuitOpenError, CredentialError, SessionRefreshError
+from bbwatch.errors import (
+    AuthCircuitOpenError,
+    CredentialError,
+    SessionRefreshError,
+    TransportError,
+)
 from bbwatch.secrets import Credentials
 from bbwatch.store import Store
 from bbwatch.transport import FakeTransport, Response
@@ -62,6 +68,50 @@ def test_ensure_session_logs_in_when_invalid(tmp_path, monkeypatch):
     )
     assert n["login"] == 1
     assert p.exists()  # 登录后写缓存
+
+
+@pytest.mark.parametrize("error", [TransportError("connection unavailable"), ValueError("bad data")])
+def test_cache_verification_error_preserves_session_without_relogin(tmp_path, monkeypatch, error):
+    transport = FakeTransport()
+    transport.import_cookies(COOKIE)
+    path = tmp_path / "session"
+    sess.save_session(transport, path)
+    cached = path.read_bytes()
+    login = Mock()
+    monkeypatch.setattr(sess, "adfs_login", login)
+    store = Store(":memory:")
+    try:
+        store.record_auth_failure(NOW)
+        store.record_auth_failure(NOW)
+        with pytest.raises(type(error), match=str(error)):
+            sess.ensure_session(
+                transport, store, Credentials("u", "p"), path, now=NOW,
+                verify=Mock(side_effect=error),
+            )
+        login.assert_not_called()
+        assert transport.export_cookies() == COOKIE
+        assert path.read_bytes() == cached
+        assert store._conn.execute("SELECT fail_count FROM auth_state WHERE id=1").fetchone()[0] == 2
+        assert not store.auth_circuit_open(NOW)
+    finally:
+        store.close()
+
+
+def test_login_transport_error_does_not_change_credential_failure_count(tmp_path, monkeypatch):
+    monkeypatch.setattr(sess, "adfs_login", Mock(side_effect=TransportError("offline")))
+    store = Store(":memory:")
+    try:
+        store.record_auth_failure(NOW)
+        store.record_auth_failure(NOW)
+        with pytest.raises(TransportError, match="offline"):
+            sess.ensure_session(
+                FakeTransport(), store, Credentials("u", "p"), tmp_path / "session",
+                now=NOW, verify=lambda _: False,
+            )
+        assert store._conn.execute("SELECT fail_count FROM auth_state WHERE id=1").fetchone()[0] == 2
+        assert not store.auth_circuit_open(NOW)
+    finally:
+        store.close()
 
 
 def test_ensure_session_circuit_open_raises(tmp_path, monkeypatch):

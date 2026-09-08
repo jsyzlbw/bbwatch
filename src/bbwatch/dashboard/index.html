@@ -1159,6 +1159,7 @@
       let changedScanStatus = null;
       let scanNotice = "";
       let scanNoticeKind = "warning";
+      let scanNoticeAction = "load";
       let scanPollInFlight = false;
       let scanRequestPending = false;
       let pageActive = true;
@@ -1293,12 +1294,14 @@
         if (!items.length) return "";
         return `<details class="disclosure" id="${id}" ${OPEN_GROUPS.has(id) ? "open" : ""}><summary>${icon("chevron")}<span>${label}</span><span class="count">${count(items.length)}</span></summary><div class="list">${items.map(row).join("")}</div></details>`;
       }
-      function notice(message, kind = "error", retry = true) {
+      function notice(message, kind = "error", retry = true, action = "load") {
         const box = $("#notice");
         box.className = `notice ${kind}`;
         box.hidden = !message;
         $("#noticeText").textContent = message;
         $("#retryBtn").hidden = !retry;
+        $("#retryBtn").dataset.action = action;
+        $("#retryBtn").textContent = action === "scan" ? "重新扫描" : "重新连接";
       }
       function restoreFocus(focusKey) {
         const target = Array.from(
@@ -1372,7 +1375,7 @@
           : "尚未扫描";
         $("#demoLabel").hidden = !STATE.demo;
         if (!LOAD_ERROR) {
-          if (scanNotice) notice(scanNotice, scanNoticeKind, !SCAN_ACTIVE);
+          if (scanNotice) notice(scanNotice, scanNoticeKind, !SCAN_ACTIVE, scanNoticeAction);
           else if (stale)
             notice(
               "清单超过 12 小时未更新；当前记录可能不完整，建议扫描一次。",
@@ -1544,6 +1547,7 @@
         setScanBusy(false);
         scanNotice = "等待扫描结果已超过 16 分钟，暂时无法确认是否完成。清单会定期重新连接，也可点击重新连接查看。";
         scanNoticeKind = "warning";
+        scanNoticeAction = "load";
         notice(scanNotice, scanNoticeKind);
         return true;
       }
@@ -1563,6 +1567,7 @@
         }, 3000);
       }
       function syncScanStatus(scan) {
+        scanNoticeAction = "load";
         if (!validScanStatus(scan)) {
           stopScanPolling();
           setScanBusy(false);
@@ -1612,6 +1617,8 @@
             ? scan.message || "扫描部分完成，仍有课程无法读取，请稍后重试。"
             : "";
         scanNoticeKind = scan.state === "failed" ? "error" : "warning";
+        if (scan.state === "failed" || scan.state === "partial")
+          scanNoticeAction = "scan";
         if (completedRequest && scan.state === "succeeded")
           toast(scan.message || "扫描已完成，清单已更新。");
       }
@@ -1624,6 +1631,7 @@
         }
         setScanBusy(true);
         scanRequestPending = true;
+        if (scanNotice) notice(scanNotice, scanNoticeKind, false, scanNoticeAction);
         try {
           const result = await request("/api/scan", { method: "POST" });
           watchedScanId = null;
@@ -1638,10 +1646,11 @@
           else {
             scanNotice = "暂时无法确认扫描请求，请稍后重新连接查看；当前清单未作更改。";
             scanNoticeKind = "error";
+            scanNoticeAction = "load";
           }
         } finally {
           scanRequestPending = false;
-          if (scanNotice) notice(scanNotice, scanNoticeKind, !SCAN_ACTIVE);
+          if (scanNotice) notice(scanNotice, scanNoticeKind, !SCAN_ACTIVE, scanNoticeAction);
         }
       }
       function toast(message) {
@@ -1655,7 +1664,9 @@
       }
       $("#themeBtn").addEventListener("click", toggleTheme);
       $("#scanBtn").addEventListener("click", doScan);
-      $("#retryBtn").addEventListener("click", load);
+      $("#retryBtn").addEventListener("click", () =>
+        $("#retryBtn").dataset.action === "scan" ? doScan() : load(),
+      );
       $("#board").addEventListener("click", (event) => {
         const button = event.target.closest("button[data-action]");
         if (!button || button.disabled) return;

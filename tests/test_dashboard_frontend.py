@@ -227,6 +227,47 @@ def test_polling_connection_failure_preserves_tasks_and_can_recover():
     assert result["active"] is False
 
 
+@pytest.mark.parametrize("terminal", ["failed", "partial"])
+def test_scan_failure_notice_retries_scan_through_real_button_without_duplicate_posts(terminal):
+    result = frontend(f"retry_{terminal}")
+    assert [(r["url"], r.get("method", "GET")) for r in result["requests"]] == [
+        ("/api/scan", "POST"),
+    ]
+    assert result["before"]["retryLabel"] == "重新扫描"
+    assert result["pending"]["retryVisible"] is False
+    assert result["pending"]["active"] is True
+    assert result["active"] is True
+    assert result["retryVisible"] is False
+    assert result["state"] == result["expectedState"]
+
+
+def test_dashboard_disconnect_reconnects_only_then_restores_scan_retry_action():
+    result = frontend("retry_load_failure")
+    assert result["disconnected"]["retryLabel"] == "重新连接"
+    assert [(r["url"], r.get("method", "GET")) for r in result["requests"]] == [
+        ("/api/tasks", "GET"),
+    ]
+    assert result["retryLabel"] == "重新扫描"
+    assert result["retryVisible"] is True
+    assert result["state"] == result["expectedState"]
+
+
+def test_uncertain_scan_post_notice_reconnects_without_starting_another_scan():
+    result = frontend("retry_uncertain_post")
+    assert result["uncertain"]["retryLabel"] == "重新连接"
+    assert [(r["url"], r.get("method", "GET")) for r in result["requests"]] == [
+        ("/api/tasks", "GET"),
+    ]
+    assert result["active"] is True
+    assert result["retryVisible"] is False
+
+
+def test_running_scan_hides_notice_retry_without_sending_another_request():
+    result = frontend("retry_running")
+    assert result["retryVisible"] is False
+    assert result["requests"] == []
+
+
 def test_loading_a_running_scan_resumes_polling_without_launching_another():
     result = frontend("flow_reload_running")
     assert result["active"] is True

@@ -44,12 +44,9 @@ def ensure_session(
     verify: Callable[[object], bool],
 ) -> None:
     """确保 transport 持有有效 BB 会话。优先复用缓存；失效则查熔断后重登并缓存。"""
-    if load_session(transport, session_path):
-        try:
-            if verify(transport):
-                return
-        except Exception:  # noqa: BLE001  验证失败 → 当作需重登
-            pass
+    # 只有明确的未认证响应才需要重登；断网或服务异常不能证明缓存失效。
+    if load_session(transport, session_path) and verify(transport):
+        return
     if store.auth_circuit_open(now):
         raise AuthCircuitOpenError("认证连续失败已熔断，请稍后重试或重新 bbwatch setup")
     try:

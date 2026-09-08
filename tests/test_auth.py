@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from bbwatch.auth import AUTHORIZE_URL, build_login_post, login, parse_adfs_form
-from bbwatch.errors import AuthError, CredentialError
+from bbwatch.errors import AuthError, CredentialError, TransportError
 from bbwatch.secrets import Credentials
 from bbwatch.transport import FakeTransport, Response
 
@@ -43,6 +43,30 @@ def test_login_stuck_on_idp_raises_autherror():
     t = _login_transport("https://sts.cuhk.edu.cn/adfs/oauth2/authorize?x", post_body="continue")
     with pytest.raises(AuthError):
         login(t, Credentials("u@link.cuhk.edu.cn", "pw"))
+
+
+@pytest.mark.parametrize("status", [429, 503])
+def test_login_page_http_failure_does_not_submit_credentials(status):
+    html = (FIX / "adfs_form.html").read_text()
+    transport = FakeTransport({
+        ("GET", AUTHORIZE_URL): Response(status, {"Content-Type": "text/html"}, html, AUTHORIZE_URL),
+    })
+    with pytest.raises(TransportError, match=str(status)):
+        login(transport, Credentials("u", "p"))
+    assert transport.calls == [("GET", AUTHORIZE_URL)]
+
+
+@pytest.mark.parametrize("status", [429, 503])
+@pytest.mark.parametrize("final_host", ["sts.cuhk.edu.cn", "bb.cuhk.edu.cn"])
+def test_login_post_http_failure_is_neither_bad_password_nor_success(status, final_host):
+    transport = _login_transport(f"https://{final_host}/login")
+    action = "https://sts.cuhk.edu.cn/adfs/oauth2/authorize?client_id=x&response_type=code"
+    transport.routes[("POST", action)] = Response(
+        status, {"Content-Type": "text/html"}, "Service unavailable, please try again later",
+        f"https://{final_host}/login",
+    )
+    with pytest.raises(TransportError, match=str(status)):
+        login(transport, Credentials("u", "p"))
 
 
 def test_parse_adfs_form_extracts_action_and_fields():

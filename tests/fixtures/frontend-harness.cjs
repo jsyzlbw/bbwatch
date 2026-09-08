@@ -40,6 +40,7 @@ class Element {
     this.style = {};
     this.dataset = {};
     this.attributes = {};
+    this.listeners = new Map();
     this.classList = {
       contains: value => this.className.split(/\s+/).includes(value),
       add: (...values) => {
@@ -70,7 +71,10 @@ class Element {
   setAttribute(name, value) { this.attributes[name] = String(value); }
   getAttribute(name) { return this.attributes[name] ?? null; }
   removeAttribute(name) { delete this.attributes[name]; }
-  addEventListener() {}
+  addEventListener(name, callback) {
+    if (!this.listeners.has(name)) this.listeners.set(name, []);
+    this.listeners.get(name).push(callback);
+  }
   querySelector() { return null; }
   querySelectorAll() { return []; }
   scrollIntoView() {}
@@ -166,6 +170,13 @@ async function dispatchWindow(name) {
   for (const callback of windowListeners.get(name) || []) await callback({ type: name, persisted: true });
   await new Promise(setImmediate);
 }
+async function click(id) {
+  const target = element(id);
+  if (target.hidden || target.disabled) return;
+  for (const callback of target.listeners.get('click') || [])
+    await callback({ type: 'click', target });
+  await new Promise(setImmediate);
+}
 async function pollOnce() {
   const entry = [...timers.entries()].find(([, timer]) =>
     timer.type === 'timeout' && timer.delay === 3000);
@@ -189,6 +200,8 @@ function snapshot() {
     active: run('SCAN_ACTIVE'),
     notice: element('noticeText').textContent,
     noticeVisible: !element('notice').hidden,
+    retryLabel: element('retryBtn').textContent.trim(),
+    retryVisible: !element('retryBtn').hidden,
     pollTimers: [...timers.values()].filter(t => t.type === 'timeout' && t.delay === 3000).length,
     intervalCount: [...timers.values()].filter(t => t.type === 'interval').length,
   };
@@ -213,6 +226,7 @@ async function main() {
     node.textContent = '';
     node.innerHTML = '';
   }
+  element('retryBtn').textContent = html.match(/id="retryBtn"[^>]*>([\s\S]*?)<\/button>/)[1].trim();
   if (scenario === 'helpers') {
     context.sample = sample;
     return {
@@ -317,6 +331,52 @@ async function main() {
     fetchImpl = () => failedResponse(scenario.split('_')[1]);
     await run('doScan()');
     return snapshot();
+  }
+  if (scenario.startsWith('retry_')) {
+    const mode = scenario.slice(6);
+    const server = { ...structuredClone(initial), scan: scanStatus(
+      mode === 'partial' ? 'partial' : mode === 'running' ? 'running' : 'failed',
+      '无法连接学校服务，请检查网络后重试。') };
+    const response = data => ({ ok: true, status: 200,
+      json: async () => structuredClone(data) });
+    fetchImpl = () => Promise.resolve(response(server));
+    await run('load()');
+    if (mode === 'load_failure') {
+      fetchImpl = () => failedResponse('network');
+      await run('load()');
+      const disconnected = snapshot();
+      requests.length = 0;
+      fetchImpl = () => Promise.resolve(response(server));
+      await click('retryBtn');
+      return { ...snapshot(), disconnected, expectedState: server };
+    }
+    if (mode === 'uncertain_post') {
+      fetchImpl = () => failedResponse('network');
+      await click('scanBtn');
+      const uncertain = snapshot();
+      requests.length = 0;
+      server.scan = { ...scanStatus('running', '正在扫描课程。'), id: 'scan-2' };
+      fetchImpl = () => Promise.resolve(response(server));
+      await click('retryBtn');
+      return { ...snapshot(), uncertain, expectedState: server };
+    }
+    requests.length = 0;
+    if (mode === 'running') {
+      await click('retryBtn');
+      return snapshot();
+    }
+    const before = snapshot();
+    let accept;
+    fetchImpl = (url, options) => options.method === 'POST'
+      ? new Promise(resolve => { accept = resolve; })
+      : Promise.resolve(response(server));
+    const firstClick = click('retryBtn');
+    await click('retryBtn');
+    const pending = snapshot();
+    if (accept) accept(response({ ok: true,
+      scan: { ...scanStatus('running', '正在扫描课程。'), id: 'scan-2' } }));
+    await firstClick;
+    return { ...snapshot(), before, pending, expectedState: server };
   }
   if (scenario.startsWith('flow_')) {
     const flow = scenario.slice(5);
