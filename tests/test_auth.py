@@ -11,7 +11,7 @@ FIX = Path(__file__).parent / "fixtures"
 
 
 def _login_transport(final_url: str, post_body: str = "") -> FakeTransport:
-    html = (FIX / "adfs_form.html").read_text()
+    html = (FIX / "adfs_form.html").read_text(encoding="utf-8")
     action = "https://sts.cuhk.edu.cn/adfs/oauth2/authorize?client_id=x&response_type=code"
     return FakeTransport(
         {
@@ -47,7 +47,7 @@ def test_login_stuck_on_idp_raises_autherror():
 
 @pytest.mark.parametrize("status", [429, 503])
 def test_login_page_http_failure_does_not_submit_credentials(status):
-    html = (FIX / "adfs_form.html").read_text()
+    html = (FIX / "adfs_form.html").read_text(encoding="utf-8")
     transport = FakeTransport({
         ("GET", AUTHORIZE_URL): Response(status, {"Content-Type": "text/html"}, html, AUTHORIZE_URL),
     })
@@ -70,7 +70,7 @@ def test_login_post_http_failure_is_neither_bad_password_nor_success(status, fin
 
 
 def test_parse_adfs_form_extracts_action_and_fields():
-    html = (FIX / "adfs_form.html").read_text()
+    html = (FIX / "adfs_form.html").read_text(encoding="utf-8")
     action, fields = parse_adfs_form(html, base="https://sts.cuhk.edu.cn/")
     assert action.startswith("https://sts.cuhk.edu.cn/adfs/oauth2/authorize")
     assert "UserName" in fields and "Password" in fields and fields["Kmsi"] == "true"
@@ -79,7 +79,7 @@ def test_parse_adfs_form_extracts_action_and_fields():
 def test_parse_adfs_form_picks_password_form_not_paginated():
     # 真实页有两个 form：分步(无密码)在前、真正登录表单(含 Password)在后。
     # 必须选含 Password 的那个，否则 POST 缺密码字段 → 登录失败。
-    html = (FIX / "adfs_form.html").read_text()
+    html = (FIX / "adfs_form.html").read_text(encoding="utf-8")
     action, fields = parse_adfs_form(html, base="https://sts.cuhk.edu.cn/")
     assert "Password" in fields  # 选错(分步表单)则没有此字段
     assert "pageid=paginated" not in action  # 不是分步表单的 action

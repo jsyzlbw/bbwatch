@@ -12,13 +12,23 @@ from .config import DEFAULT_CONFIG_TOML, AppPaths, load_config, make_course_filt
 from .downloader import mirror
 from .errors import TransportError
 from .notifier import MacNotifier, deliver_pending
+from .platform import default_download_dir, is_windows
 from .scanner import scan
 from .secrets import Credentials, load_credentials, store_credentials
 from .session import ensure_session, save_session
 from .store import Store, now_utc, parse_utc
 from .transport import CurlCffiTransport, Transport
 
-DEFAULT_DEST = Path.home() / "Downloads" / "bbwatch"
+DEFAULT_DEST = default_download_dir()
+
+
+def _configure_console() -> None:
+    if not is_windows():
+        return
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
 
 
 def _identity_summary(client: BbClient) -> str:
@@ -211,7 +221,7 @@ def cmd_setup(args) -> int:
             f"凭据已保存，但旧登录状态重置失败：{exc}；"
             "请检查本机数据目录后重新运行 bbwatch setup。"
         ) from exc
-    print("已存入 macOS 钥匙串，并重置旧登录状态。请运行 bbwatch whoami 验证账号密码。")
+    print("已存入系统凭据存储，并重置旧登录状态。请运行 bbwatch whoami 验证账号密码。")
     return 0
 
 
@@ -235,7 +245,7 @@ def cmd_config(_args) -> int:
     paths = AppPaths()
     paths.ensure_dirs()
     if not paths.config_path.exists():
-        paths.config_path.write_text(DEFAULT_CONFIG_TOML)
+        paths.config_path.write_text(DEFAULT_CONFIG_TOML, encoding="utf-8")
         print(f"已生成默认配置：{paths.config_path}")
     cfg = load_config(paths.config_path)
     print(f"配置文件：{paths.config_path}")
@@ -293,7 +303,7 @@ def cmd_download(args) -> int:
     me = client.get_me()
     active = [c for c in client.list_courses(me.id) if c.is_active]
     course = pick_course(active, args.ref)
-    dest = Path(args.dest) if args.dest else Path(cfg.download_dest).expanduser()
+    dest = Path(args.dest).expanduser() if args.dest else Path(cfg.download_dest).expanduser()
     print(run_download(client, store, course, dest, now=now_utc()))
     return 0
 
@@ -363,6 +373,7 @@ def cmd_undone(args) -> int:
 
 
 def main(argv=None) -> int:
+    _configure_console()
     p = argparse.ArgumentParser(prog="bbwatch")
     sub = p.add_subparsers(dest="cmd", required=True)
     p_setup = sub.add_parser("setup", help="录入并保存学校账号密码到钥匙串")

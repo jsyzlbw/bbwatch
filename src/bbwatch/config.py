@@ -6,9 +6,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .platform import default_download_dir, is_windows, user_data_dir
+
 
 def default_root() -> Path:
-    return Path(os.environ.get("BBWATCH_HOME", str(Path.home() / ".bbwatch")))
+    return Path(os.environ.get("BBWATCH_HOME", str(user_data_dir()))).expanduser()
 
 
 @dataclass
@@ -16,7 +18,7 @@ class AppPaths:
     root: Path = field(default_factory=default_root)
 
     def __post_init__(self) -> None:
-        self.root = Path(self.root)
+        self.root = Path(self.root).expanduser()
 
     @property
     def db_path(self) -> Path:
@@ -36,7 +38,8 @@ class AppPaths:
 
     def ensure_dirs(self) -> None:
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        os.chmod(self.root, 0o700)
+        if not is_windows():
+            os.chmod(self.root, 0o700)
 
 
 @dataclass
@@ -50,18 +53,19 @@ class Config:
 
 def load_config(path) -> Config:
     data: dict = {}
-    p = Path(path)
+    p = Path(path).expanduser()
     if p.exists():
         with open(p, "rb") as f:
             data = tomllib.load(f)
     scan = data.get("scan", {})
     dl = data.get("download", {})
     dash = data.get("dashboard", {})
+    destination = dl.get("dest", str(default_download_dir()))
     return Config(
         include=list(scan.get("include", [])),
         exclude=list(scan.get("exclude", [])),
         archive_overdue_weeks=int(scan.get("archive_overdue_weeks", 4)),
-        download_dest=dl.get("dest", "~/Downloads/bbwatch"),
+        download_dest=str(Path(destination).expanduser()),
         dashboard_port=int(dash.get("port", 8765)),
     )
 
@@ -74,9 +78,7 @@ def make_course_filter(config: Config) -> Callable:
         cid = (course.course_id or "").lower()
         if inc and not any(s in cid for s in inc):
             return False
-        if any(s in cid for s in exc):
-            return False
-        return True
+        return not any(s in cid for s in exc)
 
     return _filter
 

@@ -26,6 +26,7 @@ def frontend(scenario):
         [NODE, str(HARNESS), str(HTML), scenario],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=5,
         env={**os.environ, "TZ": "Pacific/Honolulu"},
         check=False,

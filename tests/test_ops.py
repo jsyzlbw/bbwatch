@@ -1,9 +1,12 @@
+from pathlib import Path
+
 import keyring
 import pytest
 from keyring.backend import KeyringBackend
 
 from bbwatch.config import AppPaths, Config, load_config, make_course_filter
 from bbwatch.diff import diff_columns
+from bbwatch.errors import CredentialError
 from bbwatch.models import Column, ColumnStatus, Course
 from bbwatch.ops import run_doctor, run_uninstall
 from bbwatch.store import Store
@@ -46,7 +49,11 @@ def test_load_config_parses(tmp_path):
     )
     cfg = load_config(p)
     assert cfg.include == ["MAT"] and cfg.exclude == ["PED"]
-    assert cfg.archive_overdue_weeks == 2 and cfg.download_dest == "/tmp/x" and cfg.dashboard_port == 9000
+    assert (
+        cfg.archive_overdue_weeks == 2
+        and cfg.download_dest == str(Path("/tmp/x").expanduser())
+        and cfg.dashboard_port == 9000
+    )
 
 
 def test_course_filter_include_exclude():
@@ -92,5 +99,5 @@ def test_uninstall_clears_creds_and_session(tmp_path):
     out = run_uninstall(paths, purge_db=False)
     assert "凭据" in out
     assert not paths.session_path.exists()
-    with pytest.raises(Exception):
+    with pytest.raises(CredentialError):
         load_credentials()

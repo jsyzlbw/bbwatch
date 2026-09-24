@@ -162,7 +162,10 @@ class _OfflineClient:
 @pytest.mark.parametrize("fail", [False, True])
 def test_remote_tools_close_store_even_on_failure(tmp_path, monkeypatch, name, args, fail):
     paths = AppPaths(tmp_path)
-    paths.config_path.write_text(f'[download]\ndest = "{tmp_path / "downloads"}"\n')
+    paths.config_path.write_text(
+        f'[download]\ndest = "{(tmp_path / "downloads").as_posix()}"\n',
+        encoding="utf-8",
+    )
     store = Store(paths.db_path)
     client = _OfflineClient(fail=fail, with_course=name == "download_course")
     monkeypatch.setattr(mcp_server, "_authed", lambda: (client, store, paths))

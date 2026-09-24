@@ -4,6 +4,8 @@ import socket
 import urllib.request
 from urllib.parse import urlsplit
 
+from .platform import is_windows
+
 _DEFAULT_PORTS = {
     "http": 80, "https": 443,
     "socks4": 1080, "socks4a": 1080, "socks5": 1080, "socks5h": 1080,
@@ -11,8 +13,15 @@ _DEFAULT_PORTS = {
 
 
 def _system_proxies():
-    reader = getattr(urllib.request, "getproxies_macosx_sysconf", None)
+    name = "getproxies_registry" if is_windows() else "getproxies_macosx_sysconf"
+    reader = getattr(urllib.request, name, None)
     return reader() if reader is not None else {}
+
+
+def _system_proxy_bypass(host: str) -> bool:
+    name = "proxy_bypass_registry" if is_windows() else "proxy_bypass_macosx_sysconf"
+    bypass = getattr(urllib.request, name, None)
+    return bool(bypass and bypass(host))
 
 
 def _loopback(host: str) -> bool:
@@ -42,10 +51,8 @@ def resolve_proxy(url: str) -> str:
         if not route and system.get("socks"):
             raw = system["socks"]
             route = "socks5h://" + (raw.split("://", 1)[-1])
-        if route:
-            bypass = getattr(urllib.request, "proxy_bypass_macosx_sysconf", None)
-            if bypass is not None and bypass(host):
-                return ""
+        if route and _system_proxy_bypass(host):
+            return ""
     if not route:
         return ""
     route = route if "://" in route else "http://" + route

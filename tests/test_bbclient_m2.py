@@ -7,7 +7,7 @@ FIX = Path(__file__).parent / "fixtures"
 
 
 def _resp(name, status=200, ct="application/json"):
-    return Response(status, {"Content-Type": ct}, (FIX / name).read_text(), "u")
+    return Response(status, {"Content-Type": ct}, (FIX / name).read_text(encoding="utf-8"), "u")
 
 
 def test_list_columns_filters_summary_columns():

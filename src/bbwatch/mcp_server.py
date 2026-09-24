@@ -153,7 +153,7 @@ def download_course(ref: str, dest: str = "") -> str:
         active = [c for c in client.list_courses(me.id) if c.is_active]
         course = pick_course(active, ref)
         cfg = load_config(paths.config_path)
-        d = Path(dest) if dest else Path(cfg.download_dest).expanduser()
+        d = Path(dest).expanduser() if dest else Path(cfg.download_dest).expanduser()
         return run_download(client, store, course, d, now=_now())
     finally:
         store.close()

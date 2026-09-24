@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 SCHEMA_VERSION = 4
@@ -11,11 +11,11 @@ _SCHEMA = Path(__file__).parent / "schema.sql"
 
 
 def now_utc() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
 def parse_utc(s: str) -> datetime:
-    return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    return datetime.fromisoformat(s)
 
 
 def _add_seconds(iso: str, secs: int) -> str:
@@ -42,7 +42,7 @@ class Store:
 
     def _init_schema(self) -> None:
         # 所有建表为 CREATE IF NOT EXISTS，对新库与旧库均幂等（加表即迁移）。
-        self._conn.executescript(_SCHEMA.read_text())
+        self._conn.executescript(_SCHEMA.read_text(encoding="utf-8"))
         row = self._conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         cur = int(row["value"]) if row else 0
         if cur == 0:
@@ -361,9 +361,7 @@ class Store:
             return True
         if src_modified and row["src_modified_utc"] != src_modified:
             return True
-        if size is not None and row["size"] is not None and row["size"] != size:
-            return True
-        return False
+        return size is not None and row["size"] is not None and row["size"] != size
 
     def search_downloads(self, keyword: str) -> list[str]:
         like = f"%{keyword}%"
@@ -396,14 +394,12 @@ class Store:
         """已提交但**确实未出分**的作业，按截止升序。每项含 waited_days(交后等待天数)。
         注意 BB 的 status 不可靠：NeedsGrading 却带分数即已批改 → 必须 grade_score 为空;
         0 分占位列(如 Course Schedule Dates)非真作业 → 排除。"""
-        from datetime import datetime, timezone
-
         rows = self._conn.execute(
             "SELECT * FROM seen_entity WHERE kind='column' AND archived=0 "
             "AND grade_status='NeedsGrading' AND grade_score IS NULL ORDER BY due_utc ASC"
         ).fetchall()
         hidden = self._hidden_keys()
-        now_dt = datetime.now(timezone.utc)
+        now_dt = datetime.now(UTC)
         out: list[dict] = []
         for r in rows:
             if r["entity_key"] in hidden:

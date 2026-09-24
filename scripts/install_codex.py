@@ -21,6 +21,19 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+SOURCE_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(SOURCE_ROOT / "src"))
+
+from bbwatch.platform import (
+    cli_executable,
+    ensure_user_path,
+    is_windows,
+    mcp_server_command,
+    runtime_dir,
+    venv_bin_dir,
+    venv_python,
+)
+
 OWNER_FILE = ".bbwatch-codex-install.json"
 OWNER = {"installer": "bbwatch-codex", "schema": 1}
 PLUGIN_NAME = re.compile(r"[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*")
@@ -37,17 +50,21 @@ class InstallError(RuntimeError):
 
 
 @dataclass(frozen=True)
-class InstallPlan:
+class RuntimePlan:
     repo: Path
     home: Path
-    source: Path
-    plugin: Path
     runtime: Path
     venv: Path
     cli: Path
+    python: str
+
+
+@dataclass(frozen=True)
+class InstallPlan(RuntimePlan):
+    source: Path
+    plugin: Path
     marketplace: Path
     marketplace_name: str
-    python: str
     codex: str
 
 
@@ -65,9 +82,11 @@ def executable(value: str | None, default: str) -> str:
     candidate = value or shutil.which(default)
     if not candidate:
         raise InstallError(f"Cannot find {default}; supply --{default} with its executable path.")
-    if os.sep not in candidate:
+    if not Path(candidate).expanduser().is_absolute():
         candidate = shutil.which(candidate)
-    if not candidate or not Path(candidate).is_file() or not os.access(candidate, os.X_OK):
+    if not candidate or not Path(candidate).is_file() or (
+        not is_windows() and not os.access(candidate, os.X_OK)
+    ):
         raise InstallError(f"Executable is unavailable: {candidate or value}")
     # Keep a virtualenv's symlink path: resolving it would bypass that environment.
     return str(Path(candidate).expanduser().absolute())
@@ -149,6 +168,18 @@ def check_owned(path: Path) -> None:
             raise InstallError(f"Unrelated or unowned directory exists; preserving it: {path}")
 
 
+def preflight_runtime(plan: RuntimePlan) -> None:
+    check_owned(plan.runtime)
+    if plan.venv.is_symlink():
+        raise InstallError(f"Refusing unrelated virtualenv symlink: {plan.venv}")
+    if not is_windows():
+        if plan.cli.is_symlink():
+            if plan.cli.resolve() != cli_executable(plan.venv).resolve():
+                raise InstallError(f"Unrelated CLI symlink collision: {plan.cli}")
+        elif plan.cli.exists():
+            raise InstallError(f"Unrelated CLI collision: {plan.cli}")
+
+
 def preflight(plan: InstallPlan) -> dict:
     manifest = read_object(plan.source / ".codex-plugin" / "plugin.json")
     if manifest.get("name") != "bbwatch":
@@ -163,15 +194,28 @@ def preflight(plan: InstallPlan) -> dict:
     if not (plan.repo / "pyproject.toml").is_file():
         raise InstallError(f"Missing Python project: {plan.repo}")
     check_owned(plan.plugin)
-    check_owned(plan.runtime)
-    if plan.venv.is_symlink():
-        raise InstallError(f"Refusing unrelated virtualenv symlink: {plan.venv}")
-    if plan.cli.is_symlink():
-        if plan.cli.resolve() != (plan.venv / "bin" / "bbwatch").resolve():
-            raise InstallError(f"Unrelated CLI symlink collision: {plan.cli}")
-    elif plan.cli.exists():
-        raise InstallError(f"Unrelated CLI collision: {plan.cli}")
+    preflight_runtime(plan)
     return registration(plan)
+
+
+def plan_runtime(
+    repo: Path,
+    *,
+    home: Path | None = None,
+    python: str | None = None,
+) -> RuntimePlan:
+    repo = repo.expanduser().resolve()
+    home = (home or Path.home()).expanduser().resolve()
+    runtime = runtime_dir(None if is_windows() else home)
+    venv = runtime / "venv"
+    return RuntimePlan(
+        repo=repo,
+        home=home,
+        runtime=runtime,
+        venv=venv,
+        cli=cli_executable(venv) if is_windows() else home / ".local" / "bin" / "bbwatch",
+        python=executable(python or sys.executable, "python"),
+    )
 
 
 def plan_install(
@@ -181,20 +225,13 @@ def plan_install(
     codex: str | None = None,
     python: str | None = None,
 ) -> InstallPlan:
-    repo = repo.expanduser().resolve()
-    home = (home or Path.home()).expanduser().resolve()
-    runtime = home / ".local" / "share" / "bbwatch-codex"
+    runtime_plan = plan_runtime(repo, home=home, python=python)
     plan = InstallPlan(
-        repo=repo,
-        home=home,
-        source=repo / "plugins" / "bbwatch",
-        plugin=home / "plugins" / "bbwatch",
-        runtime=runtime,
-        venv=runtime / "venv",
-        cli=home / ".local" / "bin" / "bbwatch",
-        marketplace=home / ".agents" / "plugins" / "marketplace.json",
+        **runtime_plan.__dict__,
+        source=runtime_plan.repo / "plugins" / "bbwatch",
+        plugin=runtime_plan.home / "plugins" / "bbwatch",
+        marketplace=runtime_plan.home / ".agents" / "plugins" / "marketplace.json",
         marketplace_name="personal",
-        python=executable(python or sys.executable, "python"),
         codex=executable(codex, "codex"),
     )
     market = preflight(plan)
@@ -219,17 +256,12 @@ def atomic_json(path: Path, payload: dict) -> None:
     atomic_bytes(path, (json.dumps(payload, indent=2, ensure_ascii=False) + "\n").encode())
 
 
-def install(plan: InstallPlan, *, dry_run: bool = False, run: Callable = subprocess.run) -> None:
-    market = preflight(plan)
-    if market["name"] != plan.marketplace_name:
-        raise InstallError("Marketplace changed since planning; rerun the installer.")
-    selector = f"bbwatch@{plan.marketplace_name}"
-    print(f"Plugin: {plan.plugin}\nRuntime: {plan.venv}\nCLI: {plan.cli}")
-    print(f"Marketplace: {plan.marketplace}\nCodex plugin: {selector}")
-    if dry_run:
-        print("Dry run: no files changed and no processes started.")
-        return
-
+def _install_runtime(
+    plan: RuntimePlan,
+    *,
+    run: Callable,
+    add_path: Callable[[Path], bool] | None,
+) -> str:
     def command(args: list[str], timeout: int, **kwargs):
         return run(args, check=True, timeout=timeout, **kwargs)
 
@@ -247,13 +279,13 @@ def install(plan: InstallPlan, *, dry_run: bool = False, run: Callable = subproc
         )
         plan.runtime.mkdir(parents=True, exist_ok=True)
         atomic_json(plan.runtime / OWNER_FILE, OWNER)
-        python = str(plan.venv / "bin" / "python")
-        if not Path(python).is_file():
+        python = venv_python(plan.venv)
+        if not python.is_file():
             command([plan.python, "-m", "venv", str(plan.venv)], 180)
         # First satisfy dependencies. Then refresh our package even if its public
         # version has not changed, without force-reinstalling those dependencies.
         pip = [
-            python,
+            str(python),
             "-m",
             "pip",
             "install",
@@ -265,11 +297,65 @@ def install(plan: InstallPlan, *, dry_run: bool = False, run: Callable = subproc
         ]
         command([*pip, str(plan.repo)], 600)
         command([*pip, "--force-reinstall", "--no-deps", "--no-cache-dir", str(plan.repo)], 300)
+        if is_windows():
+            (ensure_user_path if add_path is None else add_path)(venv_bin_dir(plan.venv))
     except (OSError, subprocess.SubprocessError) as error:
         raise InstallError(
             "Runtime installation failed. The managed runtime is retained for retry; "
             f"plugin registration and user data were not changed. {error}"
         ) from error
+    return str(python)
+
+
+def install_cli_only(
+    plan: RuntimePlan,
+    *,
+    dry_run: bool = False,
+    run: Callable = subprocess.run,
+    add_path: Callable[[Path], bool] | None = None,
+) -> None:
+    preflight_runtime(plan)
+    print(f"Runtime: {plan.venv}\nCLI: {plan.cli}")
+    print(f"MCP: {' '.join(mcp_server_command(plan.venv))}")
+    if dry_run:
+        print("Dry run: no files changed and no processes started.")
+        return
+    _install_runtime(plan, run=run, add_path=add_path)
+    if not is_windows():
+        target = cli_executable(plan.venv)
+        if plan.cli.is_symlink() and plan.cli.resolve() != target.resolve():
+            raise InstallError(f"Unrelated CLI symlink collision: {plan.cli}")
+        if plan.cli.exists() and not plan.cli.is_symlink():
+            raise InstallError(f"Unrelated CLI collision: {plan.cli}")
+        if not plan.cli.exists() and not plan.cli.is_symlink():
+            plan.cli.parent.mkdir(parents=True, exist_ok=True)
+            plan.cli.symlink_to(target)
+    if not plan.cli.is_file():
+        raise InstallError(f"The installed CLI executable is missing: {plan.cli}")
+    print("Installed bbwatch CLI. Open a new PowerShell to use the command.")
+
+
+def install(
+    plan: InstallPlan,
+    *,
+    dry_run: bool = False,
+    run: Callable = subprocess.run,
+    add_path: Callable[[Path], bool] | None = None,
+) -> None:
+    market = preflight(plan)
+    if market["name"] != plan.marketplace_name:
+        raise InstallError("Marketplace changed since planning; rerun the installer.")
+    selector = f"bbwatch@{plan.marketplace_name}"
+    print(f"Plugin: {plan.plugin}\nRuntime: {plan.venv}\nCLI: {plan.cli}")
+    print(f"Marketplace: {plan.marketplace}\nCodex plugin: {selector}")
+    if dry_run:
+        print("Dry run: no files changed and no processes started.")
+        return
+
+    def command(args: list[str], timeout: int, **kwargs):
+        return run(args, check=True, timeout=timeout, **kwargs)
+
+    _install_runtime(plan, run=run, add_path=add_path)
 
     # Detect collisions or catalog edits that occurred while pip was running.
     market = preflight(plan)
@@ -295,10 +381,11 @@ def install(plan: InstallPlan, *, dry_run: bool = False, run: Callable = subproc
         atomic_json(manifest_path, manifest)
         mcp_path = candidate / ".mcp.json"
         mcp = read_object(mcp_path)
+        command_line = mcp_server_command(plan.venv)
         mcp["mcpServers"]["bbwatch"].update(
             {
-                "command": python,
-                "args": ["-m", "bbwatch.mcp_server"],
+                "command": command_line[0],
+                "args": command_line[1:],
             }
         )
         atomic_json(mcp_path, mcp)
@@ -308,9 +395,9 @@ def install(plan: InstallPlan, *, dry_run: bool = False, run: Callable = subproc
         installed = True
         atomic_json(plan.marketplace, market)
         market_written = True
-        if not previous_cli:
+        if not is_windows() and not previous_cli:
             plan.cli.parent.mkdir(parents=True, exist_ok=True)
-            plan.cli.symlink_to(plan.venv / "bin" / "bbwatch")
+            plan.cli.symlink_to(cli_executable(plan.venv))
             cli_created = True
         command([plan.codex, "plugin", "add", selector], 180)
     except (OSError, subprocess.SubprocessError, InstallError) as error:
@@ -348,15 +435,25 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--python", help="Python 3.11+ executable for the managed environment")
     parser.add_argument("--codex", help="Codex executable (defaults to the command on PATH)")
+    parser.add_argument(
+        "--cli-only",
+        action="store_true",
+        help="Install the bbwatch CLI and MCP runtime without requiring Codex",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Show planned paths without changes")
     args = parser.parse_args(argv)
     if sys.version_info < (3, 11):  # noqa: UP036 - this script also runs before package installation
         parser.error("Run this installer using Python 3.11 or newer.")
     try:
-        plan = plan_install(
-            Path(__file__).resolve().parents[1], codex=args.codex, python=args.python
-        )
-        install(plan, dry_run=args.dry_run)
+        repo = Path(__file__).resolve().parents[1]
+        if args.cli_only:
+            install_cli_only(
+                plan_runtime(repo, python=args.python),
+                dry_run=args.dry_run,
+            )
+        else:
+            plan = plan_install(repo, codex=args.codex, python=args.python)
+            install(plan, dry_run=args.dry_run)
     except (InstallError, OSError) as error:
         print(f"Installation stopped: {error}", file=sys.stderr)
         return 1
