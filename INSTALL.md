@@ -10,7 +10,7 @@
 
 - 已安装 Claude Code CLI，并且支持 `claude plugin` 和 `claude --init-only`。
 - `python3 --version` 显示 **Python 3.11 或更新版本**；安装脚本使用的命令是 `python3`。
-- 推荐在 **macOS** 使用，账号密码通过 `keyring` 存入本机钥匙串。Linux 还需要可用的系统密钥环；Windows 原生安装脚本尚未提供。
+- 本文的 Claude Code 安装流程面向 **macOS / Linux**。Windows 10/11 的原生 CLI 流程见 [README 的 Windows CLI 说明](README.md#windows-1011只安装原生-cli)；Windows Claude Code hooks 暂不在本阶段范围内。
 
 ## 方式一：让 Claude 帮你安装
 
@@ -106,6 +106,18 @@ Claude Code 版保留了 **SessionStart 自动刷新**：新会话先展示本�
 
 ## 只用命令行，不安装插件
 
+### Windows 10/11
+
+在 PowerShell 中从仓库目录运行：
+
+```powershell
+py -3.11 scripts/install_codex.py --cli-only
+```
+
+这只安装 bbwatch CLI 和 MCP 运行环境，不要求 Codex。新开 PowerShell 后使用 `bbwatch setup`、`bbwatch whoami`、`bbwatch scan`、`bbwatch tasks`、`bbwatch courses`、`bbwatch download <course>` 和 `bbwatch dashboard`。安装器会把 venv 的 `Scripts` 目录加入当前用户 PATH。
+
+### macOS / Linux
+
 ```bash
 git clone https://github.com/jsyzlbw/bbwatch.git
 cd bbwatch
@@ -124,4 +136,4 @@ Claude 的插件清单位于 `.claude-plugin/`，市场名定义在 `.claude-plu
 
 插件缓存和引擎运行环境分开：`Setup` 钩子调用 `scripts/bootstrap.sh`，在 `${CLAUDE_PLUGIN_DATA}/.venv` 安装引擎；根目录 `.mcp.json` 与 `SessionStart` 钩子都使用这个环境。引擎或依赖更新后，需要重新运行 `claude --init-only`。
 
-当前脚本使用 macOS/Linux 的 `bin/` 路径。Windows 尚无 `.cmd` 初始化脚本；可考虑 WSL，但仍需处理 Linux 密钥环配置。
+`scripts/bootstrap.py` 是跨平台 bootstrap 入口；`bootstrap.sh` 保留 macOS/Linux 入口，`bootstrap.ps1` 提供 Windows PowerShell 入口。Claude Code 的 Windows hook 注册留待后续阶段。
