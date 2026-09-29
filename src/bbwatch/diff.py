@@ -72,12 +72,14 @@ def diff_columns(
         prev = known.get(ek)
         if prev is None:
             if not suppress:
-                events.append(_ev("new_assignment", ek, f"新作业: {col.name}", f"截止(UTC) {col.due_utc}"))
+                detail = f"截止(UTC) {col.due_utc}" if col.due_utc else "未设置截止日期"
+                events.append(_ev("new_assignment", ek, f"新作业: {col.name}", detail))
         elif not suppress:
             if prev["due_utc"] != col.due_utc:
+                detail = f"新截止(UTC) {col.due_utc}" if col.due_utc else "未设置截止日期"
                 events.append(
                     _ev("deadline_changed", ek, f"作业改期: {col.name}",
-                        f"新截止(UTC) {col.due_utc}", variant=col.due_utc)
+                        detail, variant=col.due_utc)
                 )
             prev_graded = (prev["grade_status"] == "Graded") or (prev["grade_score"] is not None)
             now_graded = (grade_status == "Graded") or (grade_score is not None)
