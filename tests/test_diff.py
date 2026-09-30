@@ -60,6 +60,51 @@ def test_D3_deadline_change():
     assert _apply(s, _cols(s, [Column("_h1", "HW1", DUE3)], st, 4, suppress=False)) == 1
 
 
+def test_new_undated_assignment_after_baseline():
+    s = Store(":memory:")
+    try:
+        cols = [Column("_h1", "HW1", DUE1)]
+        st = {"_h1": ColumnStatus("None")}
+        assert _apply(s, _cols(s, cols, st, 1, suppress=True)) == 0
+        s.establish_baseline(CID, "columns", NOW)
+
+        cols.append(Column("_lab", "Undated lab", None, content_id="_content"))
+        st["_lab"] = ColumnStatus("NeedsGrading")
+        assert _apply(s, _cols(s, cols, st, 2, suppress=False)) == 1
+        events = s.claim_pending_events(NOW)
+        assert len(events) == 1
+        assert events[0]["event_type"] == "new_assignment"
+        assert events[0]["detail"] == "未设置截止日期"
+        pending = s.submitted_ungraded()
+        assert [task["name"] for task in pending] == ["Undated lab"]
+        assert pending[0]["due_utc"] is None
+        assert _apply(s, _cols(s, cols, st, 3, suppress=False)) == 0
+    finally:
+        s.close()
+
+
+def test_assignment_deadline_removed_after_baseline():
+    s = Store(":memory:")
+    try:
+        st = {"_lab": ColumnStatus("NeedsGrading")}
+        cols = [Column("_lab", "Lab", DUE1, content_id="_content")]
+        assert _apply(s, _cols(s, cols, st, 1, suppress=True)) == 0
+        s.establish_baseline(CID, "columns", NOW)
+
+        cols = [Column("_lab", "Lab", None, content_id="_content")]
+        assert _apply(s, _cols(s, cols, st, 2, suppress=False)) == 1
+        events = s.claim_pending_events(NOW)
+        assert len(events) == 1
+        assert events[0]["event_type"] == "deadline_changed"
+        assert events[0]["detail"] == "未设置截止日期"
+        pending = s.submitted_ungraded()
+        assert [task["name"] for task in pending] == ["Lab"]
+        assert pending[0]["due_utc"] is None
+        assert _apply(s, _cols(s, cols, st, 3, suppress=False)) == 0
+    finally:
+        s.close()
+
+
 def test_D4_graded_once():
     s = Store(":memory:")
     _apply(s, _cols(s, [Column("_h1", "HW1", DUE1)], {"_h1": ColumnStatus("None")}, 1, suppress=True))

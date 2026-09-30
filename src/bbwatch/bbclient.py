@@ -83,12 +83,12 @@ class BbClient:
         return {t["id"]: t.get("name") for t in rows}
 
     def list_columns(self, cid: str) -> list[Column]:
-        """成绩册栏目；只返回带 grading.due 的列（过滤 Total/Weighted Total 汇总列）。"""
+        """保留带截止日期或关联课程内容的栏目，过滤无日期且无内容链接的汇总列。"""
         rows = self._paginate(f"{API}/courses/{cid}/gradebook/columns?limit=100")
         out: list[Column] = []
         for c in rows:
             due = (c.get("grading") or {}).get("due")
-            if not due:
+            if not due and not c.get("contentId"):
                 continue
             out.append(
                 Column(

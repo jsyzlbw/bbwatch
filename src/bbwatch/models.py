@@ -33,11 +33,11 @@ class Course:
 
 @dataclass(frozen=True)
 class Column:
-    """成绩册栏目（带截止日期的作业/quiz）。汇总列在 bbclient 层已过滤。"""
+    """成绩册栏目（作业/quiz，可无截止日期）。汇总列在 bbclient 层已过滤。"""
 
     id: str
     name: str
-    due_utc: str  # grading.due, UTC ISO8601, 如 2026-06-30T15:59:00.000Z
+    due_utc: str | None  # grading.due, UTC ISO8601；未设置截止日期时为 None
     content_id: str | None = None
     score_possible: float | None = None
 
