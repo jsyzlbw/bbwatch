@@ -54,7 +54,7 @@
 | **刷新方式** | 按需扫描；定时监控需明确开启 | 会话开始时显示摘要，数据较旧时后台刷新 |
 | **完整指南** | [Codex 安装与排障 →](CODEX.md) | [Claude Code 安装与排障 →](INSTALL.md) |
 
-> **运行环境：** Python **3.11 或更新版本**。Codex 本机版已在 macOS 验证；Claude Code 的安装脚本面向 macOS / Linux。Windows 暂无原生安装器。
+> **运行环境：** Python **3.11 或更新版本**。Windows 10/11 已支持不依赖 WSL 的原生 CLI；Claude Code Windows hooks 和 Windows Toast 仍不在本阶段范围内。
 >
 > 这里的 Codex 插件用于 **Codex 应用**；ChatGPT 网页版需要额外的远程接入，不是同一种安装方式。
 
@@ -79,6 +79,30 @@ python3 scripts/install_codex.py
 ```
 
 已有 bbwatch 账号配置时可以跳过 `setup`。安装完成后，**新建一个 Codex 任务**，直接开始对话。
+
+### Windows 10/11：只安装原生 CLI
+
+Windows CLI 不要求安装 Codex，也不使用 WSL。请在 PowerShell 中运行：
+
+```powershell
+git clone -b feat/windows-support https://github.com/dominictpl11/bbwatch.git
+cd bbwatch
+py -3.11 scripts/install_codex.py --cli-only
+```
+
+安装器会把 venv 的 `Scripts` 目录加入当前用户 PATH；请新开一个 PowerShell，再运行：
+
+```powershell
+bbwatch setup
+bbwatch whoami
+bbwatch scan
+bbwatch tasks
+bbwatch courses
+bbwatch download MAT3007
+bbwatch dashboard
+```
+
+Windows 数据目录为 `%USERPROFILE%\.bbwatch`，运行环境为 `%LOCALAPPDATA%\bbwatch\runtime`，默认课件目录为 `%USERPROFILE%\Downloads\bbwatch`。密码仍由 Windows Credential Manager 通过 `keyring` 保存。首次登录、扫描和下载需要在你的 Windows 网络与 Blackboard 账号环境中验证。
 
 ### 用 Claude Code：让 AI 帮你安装
 
@@ -211,7 +235,7 @@ macOS 上，账号凭据由本机钥匙串保存；登录时通过学校认证�
 
 ## 命令速查
 
-下面用 `bbwatch` 表示命令入口。Codex 用户可以写成 `~/.local/bin/bbwatch`；Claude Code 用户的完整路径见 [安装指南](INSTALL.md)。
+下面用 `bbwatch` 表示命令入口。macOS Codex 用户可以写成 `~/.local/bin/bbwatch`；Windows CLI 用户直接使用 PATH 中的 `bbwatch`。
 
 | 命令 | 作用 |
 | :--- | :--- |
@@ -245,7 +269,7 @@ PYTHONPATH=src .venv/bin/python -m pytest -q
 | [`tests/`](tests/) | 单元测试、安装测试与 MCP 协议测试 |
 | [`docs/superpowers/`](docs/superpowers/) | 设计文档与实现计划 |
 
-后续方向：邮件 / Telegram 通知渠道、Windows 原生支持。欢迎通过 [Issues](https://github.com/jsyzlbw/bbwatch/issues) 反馈问题或提交改进。
+后续方向：Windows Claude Code hooks、Windows Toast、邮件 / Telegram 通知渠道。欢迎通过 [Issues](https://github.com/jsyzlbw/bbwatch/issues) 反馈问题或提交改进。
 
 ---
 
