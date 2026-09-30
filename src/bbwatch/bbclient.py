@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from urllib.parse import urljoin
-
 from collections.abc import Iterator
+from urllib.parse import urljoin
 
 from .errors import SessionRefreshError, TransportError
 from .models import Announcement, Attachment, Column, ColumnStatus, Content, Course, Me
@@ -17,7 +16,7 @@ class BbClient:
         self._t = transport
         self._relogin = relogin  # 会话失效(401)时重登的回调
 
-    def clone(self) -> "BbClient":
+    def clone(self) -> BbClient:
         """造一个独立会话的副本(供并行抓取)：新 transport + 复制 cookie。
         不带 relogin(并行中各线程不应触发共享重登)。"""
         from .transport import CurlCffiTransport

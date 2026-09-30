@@ -22,7 +22,7 @@ def installer():
 
 
 @pytest.fixture
-def paths(tmp_path):
+def paths(tmp_path, monkeypatch):
     repo = tmp_path / "source with spaces"
     bundle = repo / "plugins" / "bbwatch"
     (bundle / ".codex-plugin").mkdir(parents=True)
@@ -45,6 +45,7 @@ def paths(tmp_path):
     (bundle / "README.md").write_text("source bundle")
     (repo / "pyproject.toml").write_text('[project]\nname = "bbwatch"\n')
     home = tmp_path / "home with spaces"
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local appdata"))
     codex = tmp_path / "tools with spaces" / "codex"
     codex.parent.mkdir()
     codex.write_text("#!/bin/sh\nexit 0\n")
@@ -64,7 +65,7 @@ def write_marketplace(home, payload):
     return path
 
 
-def fake_runner(plan, commands, *, fail_install=False):
+def fake_runner(installer, plan, commands, *, fail_install=False):
     def run(args, **kwargs):
         assert isinstance(args, list)
         assert kwargs["timeout"] > 0
@@ -73,9 +74,9 @@ def fake_runner(plan, commands, *, fail_install=False):
         if "-c" in args:
             return subprocess.CompletedProcess(args, 0, stdout="3.12.0\n")
         if args[1:3] == ["-m", "venv"]:
-            (plan.venv / "bin").mkdir(parents=True)
-            (plan.venv / "bin" / "python").write_text("managed python")
-            (plan.venv / "bin" / "bbwatch").write_text("managed CLI")
+            installer.venv_bin_dir(plan.venv).mkdir(parents=True)
+            installer.venv_python(plan.venv).write_text("managed python")
+            installer.cli_executable(plan.venv).write_text("managed CLI")
         if args[1:3] == ["plugin", "add"] and fail_install:
             raise subprocess.CalledProcessError(1, args)
         return subprocess.CompletedProcess(args, 0)
@@ -92,15 +93,47 @@ def test_dry_run_shows_paths_without_mutation_or_processes(installer, paths, cap
     assert not paths[1].exists()
 
 
+def test_cli_only_installs_runtime_without_codex(installer, paths):
+    plan = installer.plan_runtime(paths[0], home=paths[1], python=sys.executable)
+    commands = []
+    added = []
+    installer.install_cli_only(
+        plan,
+        run=fake_runner(installer, plan, commands),
+        add_path=lambda directory: added.append(directory) or True,
+    )
+    assert plan.cli.is_file()
+    if installer.is_windows():
+        assert plan.cli == installer.cli_executable(plan.venv)
+        assert added == [installer.venv_bin_dir(plan.venv)]
+    else:
+        assert plan.cli.is_symlink()
+    assert all("plugin" not in command for command in commands)
+
+
+def test_cli_only_preserves_unowned_runtime(installer, paths):
+    plan = installer.plan_runtime(paths[0], home=paths[1], python=sys.executable)
+    plan.runtime.mkdir(parents=True)
+    precious = plan.runtime / "private-data"
+    precious.write_text("preserve me")
+    with pytest.raises(installer.InstallError, match="[Oo]wn|[Uu]nrelated"):
+        installer.install_cli_only(plan, run=lambda *a, **k: pytest.fail("process started"))
+    assert precious.read_text() == "preserve me"
+
+
 def test_install_uses_absolute_runtime_and_preserves_paths_with_spaces(installer, paths):
     plan = make_plan(installer, paths)
     commands = []
-    installer.install(plan, run=fake_runner(plan, commands))
+    installer.install(plan, run=fake_runner(installer, plan, commands), add_path=lambda _: False)
     mcp = json.loads((plan.plugin / ".mcp.json").read_text())["mcpServers"]["bbwatch"]
-    assert mcp["command"] == str(plan.venv / "bin" / "python")
+    assert mcp["command"] == str(installer.venv_python(plan.venv))
     assert mcp["args"] == ["-m", "bbwatch.mcp_server"]
-    assert plan.cli.is_symlink()
-    assert plan.cli.resolve() == plan.venv / "bin" / "bbwatch"
+    if installer.is_windows():
+        assert plan.cli == installer.cli_executable(plan.venv)
+        assert plan.cli.is_file()
+    else:
+        assert plan.cli.is_symlink()
+        assert plan.cli.resolve() == installer.cli_executable(plan.venv)
     pip_commands = [c for c in commands if c[1:3] == ["-m", "pip"]]
     assert len(pip_commands) == 2
     assert all(str(plan.repo) == command[-1] for command in pip_commands)
@@ -131,11 +164,11 @@ def test_marketplace_and_user_data_survive_install_and_reinstall(installer, path
     data.write_text("preserve me")
     first = make_plan(installer, paths)
     commands = []
-    installer.install(first, run=fake_runner(first, commands))
+    installer.install(first, run=fake_runner(installer, first, commands), add_path=lambda _: False)
     first_version = json.loads((first.plugin / ".codex-plugin/plugin.json").read_text())["version"]
     (repo / "plugins/bbwatch/README.md").write_text("updated bundle")
     second = make_plan(installer, paths)
-    installer.install(second, run=fake_runner(second, commands))
+    installer.install(second, run=fake_runner(installer, second, commands), add_path=lambda _: False)
     market = json.loads(path.read_text())
     assert market["name"] == "my-personal"
     assert market["interface"] == {"displayName": "Keep my name"}
@@ -196,7 +229,7 @@ def test_unowned_plugin_directory_is_preserved(installer, paths):
 
 
 def test_unowned_runtime_directory_is_preserved(installer, paths):
-    runtime = paths[1] / ".local/share/bbwatch-codex"
+    runtime = installer.runtime_dir(None if installer.is_windows() else paths[1])
     runtime.mkdir(parents=True)
     with pytest.raises(installer.InstallError, match="[Oo]wn|[Uu]nrelated"):
         make_plan(installer, paths)
@@ -204,6 +237,8 @@ def test_unowned_runtime_directory_is_preserved(installer, paths):
 
 
 def test_unrelated_cli_collision_is_preserved(installer, paths):
+    if installer.is_windows():
+        pytest.skip("Windows CLI is the executable created inside the managed venv")
     cli = paths[1] / ".local/bin/bbwatch"
     cli.parent.mkdir(parents=True)
     cli.write_text("another program")
@@ -213,6 +248,8 @@ def test_unrelated_cli_collision_is_preserved(installer, paths):
 
 
 def test_symlink_target_is_rejected_without_touching_destination(installer, paths, tmp_path):
+    if installer.is_windows():
+        pytest.skip("Windows symlink creation requires a separate privilege setup")
     real = tmp_path / "unrelated plugin"
     real.mkdir()
     target = paths[1] / "plugins/bbwatch"
@@ -226,13 +263,17 @@ def test_symlink_target_is_rejected_without_touching_destination(installer, path
 def test_failed_codex_registration_restores_existing_bundle_and_marketplace(installer, paths):
     plan = make_plan(installer, paths)
     commands = []
-    installer.install(plan, run=fake_runner(plan, commands))
+    installer.install(plan, run=fake_runner(installer, plan, commands), add_path=lambda _: False)
     original_market = plan.marketplace.read_bytes()
     original_manifest = (plan.plugin / ".codex-plugin/plugin.json").read_bytes()
     (plan.source / "README.md").write_text("must roll back")
     again = make_plan(installer, paths)
     with pytest.raises(installer.InstallError):
-        installer.install(again, run=fake_runner(again, commands, fail_install=True))
+        installer.install(
+            again,
+            run=fake_runner(installer, again, commands, fail_install=True),
+            add_path=lambda _: False,
+        )
     assert plan.marketplace.read_bytes() == original_market
     assert (plan.plugin / ".codex-plugin/plugin.json").read_bytes() == original_manifest
     assert (plan.plugin / "README.md").read_text() == "source bundle"
@@ -258,7 +299,7 @@ def test_malformed_source_mcp_fails_preflight_cleanly(installer, paths):
 def test_failed_rollback_preserves_backup_for_recovery(installer, paths, monkeypatch):
     plan = make_plan(installer, paths)
     commands = []
-    installer.install(plan, run=fake_runner(plan, commands))
+    installer.install(plan, run=fake_runner(installer, plan, commands), add_path=lambda _: False)
     original = (plan.plugin / ".codex-plugin/plugin.json").read_bytes()
     again = make_plan(installer, paths)
     rename = Path.rename
@@ -270,7 +311,11 @@ def test_failed_rollback_preserves_backup_for_recovery(installer, paths, monkeyp
 
     monkeypatch.setattr(Path, "rename", fail_restore)
     with pytest.raises((installer.InstallError, OSError)):
-        installer.install(again, run=fake_runner(again, commands, fail_install=True))
+        installer.install(
+            again,
+            run=fake_runner(installer, again, commands, fail_install=True),
+            add_path=lambda _: False,
+        )
     backups = list(plan.plugin.parent.glob(".bbwatch-stage-*/previous"))
     assert len(backups) == 1
     assert (backups[0] / ".codex-plugin/plugin.json").read_bytes() == original

@@ -4,6 +4,8 @@ from __future__ import annotations
 import os
 import shutil
 
+from .platform import is_macos
+
 
 def run_doctor(paths) -> str:
     checks: list[tuple[str, bool, str]] = []
@@ -28,7 +30,10 @@ def run_doctor(paths) -> str:
     except Exception as e:  # noqa: BLE001
         checks.append(("数据库可用", False, type(e).__name__))
 
-    checks.append(("osascript(桌面通知)", shutil.which("osascript") is not None, ""))
+    if is_macos():
+        checks.append(("osascript(桌面通知)", shutil.which("osascript") is not None, ""))
+    else:
+        checks.append(("桌面通知", True, "当前平台未启用"))
 
     proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
     checks.append(("代理 HTTPS_PROXY", True, proxy or "未设置(直连)"))

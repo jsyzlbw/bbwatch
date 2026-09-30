@@ -20,7 +20,7 @@ def routing(monkeypatch):
     connect = Mock(return_value=connection)
     monkeypatch.setattr(urllib.request, "getproxies_environment", environment)
     monkeypatch.setattr(proxy, "_system_proxies", system)
-    monkeypatch.setattr(urllib.request, "proxy_bypass_macosx_sysconf", bypass, raising=False)
+    monkeypatch.setattr(proxy, "_system_proxy_bypass", bypass)
     monkeypatch.setattr(socket, "create_connection", connect)
     monkeypatch.setattr(socket, "getaddrinfo", Mock(side_effect=AssertionError("No DNS probes")))
     monkeypatch.setattr(urllib.request, "urlopen", Mock(side_effect=AssertionError("No HTTP probes")))
@@ -150,3 +150,17 @@ def test_current_macos_socks_proxy_is_normalized_and_reread(routing):
     assert system.call_count == 2
     assert connect.call_args.args[0] == ("localhost", 7891)
     connection.__exit__.assert_called_once()
+
+
+def test_windows_registry_proxy_is_used_when_environment_is_empty(monkeypatch):
+    registry = Mock(return_value={"https": "http://registry-proxy.example:8080"})
+    bypass = Mock(return_value=False)
+    monkeypatch.setattr(proxy, "is_windows", lambda: True)
+    monkeypatch.setattr(urllib.request, "getproxies_environment", Mock(return_value={}))
+    monkeypatch.setattr(urllib.request, "proxy_bypass_environment", Mock(return_value=False))
+    monkeypatch.setattr(urllib.request, "getproxies_registry", registry, raising=False)
+    monkeypatch.setattr(urllib.request, "proxy_bypass_registry", bypass, raising=False)
+
+    assert proxy.resolve_proxy(TARGET) == "http://registry-proxy.example:8080"
+    registry.assert_called_once()
+    bypass.assert_called_once_with("bb.cuhk.edu.cn")

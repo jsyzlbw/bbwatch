@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_stdio_initialize_local_tools_and_clean_shutdown(tmp_path):
     async def exercise():
         env = {
-            "PATH": os.environ.get("PATH", ""),
+            **os.environ,
             "HOME": str(tmp_path),
             "BBWATCH_HOME": str(tmp_path / "bbwatch"),
             "PYTHONPATH": str(ROOT / "src"),
@@ -66,7 +66,7 @@ def test_stdio_initialize_local_tools_and_clean_shutdown(tmp_path):
                 assert "未找到" in materials["content"][0]["text"]
                 process.stdin.close()
                 await asyncio.wait_for(process.wait(), timeout=5)
-                assert process.returncode == 0, (await process.stderr.read()).decode()
+                assert process.returncode == 0, (await process.stderr.read()).decode("utf-8", "replace")
         finally:
             # Own exactly this child, and reap it even after a protocol assertion fails.
             if process.returncode is None:

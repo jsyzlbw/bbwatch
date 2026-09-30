@@ -7,7 +7,7 @@ FIX = Path(__file__).parent / "fixtures"
 
 
 def _resp(name):
-    return Response(200, {"Content-Type": "application/json"}, (FIX / name).read_text(), "u")
+    return Response(200, {"Content-Type": "application/json"}, (FIX / name).read_text(encoding="utf-8"), "u")
 
 
 def test_get_me():
