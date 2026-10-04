@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from bbwatch import downloader
 from bbwatch.downloader import mirror
 from bbwatch.models import Attachment, Content, Course
 from bbwatch.store import Store
@@ -66,3 +67,10 @@ def test_filename_collision_suffixed(tmp_path):
     assert r.downloaded == 2
     names = sorted(p.name for p in (tmp_path / "MAT3007_Opt").glob("*.pdf"))
     assert names == ["hw.pdf", "hw_a2.pdf"]  # 第二个同名加 id 后缀
+
+
+def test_windows_reserved_names_are_made_safe(monkeypatch):
+    monkeypatch.setattr(downloader, "is_windows", lambda: True)
+    assert downloader._safe("CON.txt") == "_CON.txt"
+    assert downloader._safe("Lpt1") == "_Lpt1"
+    assert downloader._safe("lecture?.pdf") == "lecture_.pdf"

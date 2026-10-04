@@ -11,12 +11,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .extract import is_exam_file
+from .platform import is_windows
 
 _ILLEGAL = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_WINDOWS_RESERVED = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
 
 
 def _safe(name: str) -> str:
-    return _ILLEGAL.sub("_", name).strip().rstrip(".") or "_"
+    value = _ILLEGAL.sub("_", name).strip().rstrip(".") or "_"
+    if is_windows() and value.split(".", 1)[0].upper() in _WINDOWS_RESERVED:
+        value = f"_{value}"
+    return value
 
 
 @dataclass
@@ -31,7 +40,7 @@ class MirrorResult:
 
 def mirror(client, store, course, dest, *, now) -> MirrorResult:
     res = MirrorResult()
-    base = Path(dest) / _safe(course.course_id or course.id)
+    base = Path(dest).expanduser() / _safe(course.course_id or course.id)
     for ancestors, content in client.walk_contents(course.id):
         if content.handler == "resource/x-bb-folder":
             continue  # 文件夹本身无附件，跳过(也省一次请求)

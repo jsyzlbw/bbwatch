@@ -31,9 +31,9 @@ try:
     # 节流：仅当从未扫过、或距上次扫描超过阈值时，才后台刷新(fire-and-forget)
     should_scan = True
     if last_scan:
-        from datetime import datetime, timezone
+        from datetime import UTC, datetime
 
-        gap = (datetime.now(timezone.utc) - parse_utc(last_scan)).total_seconds()
+        gap = (datetime.now(UTC) - parse_utc(last_scan)).total_seconds()
         should_scan = gap > _SCAN_THROTTLE_S
     if should_scan:
         subprocess.Popen(

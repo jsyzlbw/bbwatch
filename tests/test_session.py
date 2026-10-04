@@ -25,7 +25,8 @@ def test_save_load_session_roundtrip_and_perms(tmp_path):
     t.import_cookies(COOKIE)
     p = tmp_path / "session"
     sess.save_session(t, p)
-    assert stat.S_IMODE(os.stat(p).st_mode) == 0o600  # 0600
+    if os.name != "nt":
+        assert stat.S_IMODE(os.stat(p).st_mode) == 0o600  # 0600
     t2 = FakeTransport()
     assert sess.load_session(t2, p) is True
     assert t2.export_cookies() == COOKIE

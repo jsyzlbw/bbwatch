@@ -9,41 +9,43 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_plugin_json_valid():
-    d = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text())
+    d = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert d["name"] == "bbwatch" and d["description"] and d["version"]
 
 
 def test_mcp_json_points_to_server():
-    d = json.loads((ROOT / ".mcp.json").read_text())
+    d = json.loads((ROOT / ".mcp.json").read_text(encoding="utf-8"))
     srv = d["mcpServers"]["bbwatch"]
     assert srv["args"] == ["-m", "bbwatch.mcp_server"]
     assert "CLAUDE_PLUGIN_DATA" in srv["command"]  # 引擎在持久数据目录的 venv
 
 
 def test_marketplace_json_lists_bbwatch():
-    d = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text())
+    d = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     assert any(p["name"] == "bbwatch" for p in d["plugins"])
 
 
 def test_hooks_json_has_sessionstart_and_setup():
-    d = json.loads((ROOT / "hooks" / "hooks.json").read_text())
+    d = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     assert "SessionStart" in d["hooks"]
     assert "Setup" in d["hooks"]  # 安装后自举
 
 
 def test_bootstrap_and_install_docs_exist():
     assert (ROOT / "scripts" / "bootstrap.sh").exists()
+    assert (ROOT / "scripts" / "bootstrap.py").exists()
+    assert (ROOT / "scripts" / "bootstrap.ps1").exists()
     assert (ROOT / "INSTALL.md").exists()
 
 
 def test_commands_have_frontmatter():
     for name in ["bb-scan", "bb-tasks", "bb-download", "bb-setup"]:
-        t = (ROOT / "commands" / f"{name}.md").read_text()
+        t = (ROOT / "commands" / f"{name}.md").read_text(encoding="utf-8")
         assert t.startswith("---") and "description:" in t
 
 
 def test_skill_frontmatter():
-    t = (ROOT / "skills" / "bb-assistant" / "SKILL.md").read_text()
+    t = (ROOT / "skills" / "bb-assistant" / "SKILL.md").read_text(encoding="utf-8")
     assert t.startswith("---") and "name: bb-assistant" in t
 
 

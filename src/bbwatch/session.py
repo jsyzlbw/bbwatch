@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .auth import login as adfs_login
 from .errors import AuthCircuitOpenError, CredentialError
+from .platform import is_windows
 from .secrets import Credentials
 
 
@@ -21,6 +22,8 @@ def save_session(transport, path) -> None:
     finally:
         os.close(fd)
     os.replace(tmp, path)  # 原子
+    if not is_windows():
+        os.chmod(path, 0o600)
 
 
 def load_session(transport, path) -> bool:
@@ -28,7 +31,7 @@ def load_session(transport, path) -> bool:
     if not p.exists():
         return False
     try:
-        transport.import_cookies(json.loads(p.read_text()))
+        transport.import_cookies(json.loads(p.read_text(encoding="utf-8")))
         return True
     except Exception:  # noqa: BLE001  损坏的缓存视为无
         return False

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from bbwatch import cli
 from bbwatch.bbclient import BB
 from bbwatch.cli import run_whoami
 from bbwatch.secrets import Credentials
@@ -8,8 +9,28 @@ from bbwatch.transport import FakeTransport, Response
 FIX = Path(__file__).parent / "fixtures"
 
 
+def test_windows_console_uses_utf8(monkeypatch):
+    class Stream:
+        def __init__(self):
+            self.calls = []
+
+        def reconfigure(self, **kwargs):
+            self.calls.append(kwargs)
+
+    stdout = Stream()
+    stderr = Stream()
+    monkeypatch.setattr(cli, "is_windows", lambda: True)
+    monkeypatch.setattr(cli.sys, "stdout", stdout)
+    monkeypatch.setattr(cli.sys, "stderr", stderr)
+
+    cli._configure_console()
+
+    assert stdout.calls == [{"encoding": "utf-8", "errors": "replace"}]
+    assert stderr.calls == [{"encoding": "utf-8", "errors": "replace"}]
+
+
 def _r(name):
-    return Response(200, {"Content-Type": "application/json"}, (FIX / name).read_text(), "u")
+    return Response(200, {"Content-Type": "application/json"}, (FIX / name).read_text(encoding="utf-8"), "u")
 
 
 def test_run_whoami_composes_summary():
