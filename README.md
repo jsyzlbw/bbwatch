@@ -2,65 +2,56 @@
 
 # bbwatch
 
-**你的 Blackboard 作业与课件助手**
+### 少翻几个页面，把作业、DDL 和课件放在一起。
 
-查作业、看 ddl、找更新、下课件。<br>
-在 Codex 或 Claude Code 里说一句话，就能把学校的事理清楚。
+为 **香港中文大学（深圳）· CUHK-SZ** 打造的 Blackboard 助手。<br>
+在 Codex / Claude Code 里直接对话，也可以使用命令行与本机网页看板。
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
-[![Codex](https://img.shields.io/badge/Codex-支持-18794E?style=flat-square)](CODEX.md)
-[![Claude Code](https://img.shields.io/badge/Claude_Code-支持-C4714B?style=flat-square)](INSTALL.md)
+[![Codex](https://img.shields.io/badge/Codex-macOS-31594B?style=flat-square)](CODEX.md)
+[![Claude Code](https://img.shields.io/badge/Claude_Code-macOS_%2F_Linux-C4714B?style=flat-square)](INSTALL.md)
+[![Windows CLI](https://img.shields.io/badge/Windows-原生_CLI-0078D4?style=flat-square)](#windows-cli)
 [![License](https://img.shields.io/badge/License-MIT-64748B?style=flat-square)](LICENSE)
 
-适用于 **香港中文大学（深圳）· CUHK-SZ** 的 [Blackboard](https://bb.cuhk.edu.cn)。
-
-[开始安装](#quick-start) · [怎么使用](#usage) · [任务看板](#dashboard) · [常见问题](#faq)
+[快速开始](#quick-start) · [对话示例](#usage) · [任务看板](#dashboard) · [命令速查](#commands) · [常见问题](#faq)
 
 </div>
 
 ---
 
-老师发布作业、调整截止时间或上传课件，你不一定会收到邮件。bbwatch 把这些变化整理成任务清单，也能按课程批量下载资料，帮你少翻几个页面。
+老师发布作业、调整截止时间或上传课件，你不一定会收到邮件。bbwatch 把 [Blackboard](https://bb.cuhk.edu.cn) 上的变化整理成一份本地清单，让你更容易知道：**接下来做什么、什么有更新、资料放在哪。**
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dashboard-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/assets/dashboard-light.png">
-  <img alt="bbwatch 任务看板：按截止时间查看作业、勾选完成、切换日夜主题" src="docs/assets/dashboard-light.png" width="100%">
-</picture>
+## 能帮你做什么
 
-<p align="center"><sub>真实界面 · 演示数据 · 支持日间与夜间主题</sub></p>
+| | 能力 | 日常用法 |
+| :---: | :--- | :--- |
+| 📅 | **作业与截止时间** | 按截止时间整理任务，突出临近截止与逾期项 |
+| 🔎 | **课程变化追踪** | 扫描新作业、改期、公告、出分与新课件；macOS 支持桌面通知 |
+| 📚 | **课件增量下载** | 按课程与文件夹整理附件，识别到的往年卷归入 `_exams/` |
+| ⏳ | **待批改清单** | 单独查看已提交但尚未出分的作业 |
+| ✅ | **本地学习进度** | 在对话或看板中标记完成、撤销，隐藏的任务也能恢复 |
+| 🗂️ | **已下载资料检索** | 按课程、文件名或路径关键词查找本地下载记录 |
 
-## 一眼看懂：它能帮你做什么
-
-| 你想做的事 | bbwatch 帮你处理 |
-| :--- | :--- |
-| **别漏作业** | 按截止时间整理清单，高亮临近截止与逾期任务 |
-| **看看有没有更新** | 扫描新作业、改期、公告、出分和新课件，支持 macOS 桌面通知 |
-| **整门课一起下载** | 保留课程与文件夹结构，增量下载，识别到的往年卷归入 `_exams/` |
-| **跟进待批改作业** | 单独列出已提交但尚未出分的作业 |
-| **整理学习进度** | 在对话或网页看板中标记完成，也能撤销 |
-| **找回下载过的资料** | 按课程、文件名或路径关键词检索本地下载记录 |
+> **使用边界：** 查询通常读取本地缓存，想获取最新状态请先扫描。截止时间按北京时间（UTC+8）展示；标记完成只更新本地清单，**实际提交仍需在 Blackboard 完成**。
 
 <a id="quick-start"></a>
 
-## 开始安装
+## 快速开始
 
-先选你正在用的客户端。两种版本共用 Python 引擎，也能复用本机已有的账号与任务数据。
+准备好 **Git、Python 3.11+ 和学校 Blackboard 账号**，再选择适合你的入口：
 
-| | Codex | Claude Code |
+| 你的环境 | 推荐入口 | 安装后如何使用 |
 | :--- | :--- | :--- |
-| **使用位置** | Codex 桌面应用 / CLI | Claude Code |
-| **安装方式** | 运行全局安装器 | 从插件市场安装 |
-| **刷新方式** | 按需扫描；定时监控需明确开启 | 会话开始时显示摘要，数据较旧时后台刷新 |
-| **完整指南** | [Codex 安装与排障 →](CODEX.md) | [Claude Code 安装与排障 →](INSTALL.md) |
+| **macOS + Codex** | [全局插件安装](#codex-install) | 所有 Codex 项目中直接对话，默认按需扫描 |
+| **Windows 10/11** | [原生命令行](#windows-cli) | 不依赖 WSL；终端命令 + 网页看板 |
+| **macOS / Linux + Claude Code** | [插件市场安装](#claude-install) | 新会话展示摘要，数据较旧时后台刷新 |
+| **macOS / Linux，只用终端** | [独立 CLI 安装指南](INSTALL.md#macos--linux) | 无需安装 AI 客户端 |
 
-> **运行环境：** Python **3.11 或更新版本**。Windows 10/11 已支持不依赖 WSL 的原生 CLI；Claude Code Windows hooks 和 Windows Toast 仍不在本阶段范围内。
->
-> 这里的 Codex 插件用于 **Codex 应用**；ChatGPT 网页版需要额外的远程接入，不是同一种安装方式。
+<a id="codex-install"></a>
 
-### 用 Codex：安装一次，所有项目可用
+### macOS · Codex
 
-先确认 `python3 --version` 不低于 3.11，并且能运行 `codex plugin --help`，再在终端执行：
+确认 `python3 --version` 为 **3.11+**，且 `codex plugin --help` 能正常运行。即使使用 Codex 桌面应用，安装时也需要 Codex CLI。
 
 ```bash
 git clone https://github.com/jsyzlbw/bbwatch.git
@@ -68,21 +59,33 @@ cd bbwatch
 python3 scripts/install_codex.py
 ```
 
-如果你的新版 Python 命令叫 `python3.12`，把上面的 `python3` 换成 `python3.12`。
-
-首次配置学校账号，在**本机终端**运行：
+在**本机终端**依次完成账号配置、登录验证与首次扫描：
 
 ```bash
-~/.local/bin/bbwatch setup    # 按提示输入账号与密码，密码不回显
-~/.local/bin/bbwatch whoami   # 验证学校登录
-~/.local/bin/bbwatch scan     # 首次扫描，建立本地任务清单
+~/.local/bin/bbwatch setup
+~/.local/bin/bbwatch whoami
+~/.local/bin/bbwatch scan
 ```
 
-已有 bbwatch 账号配置时可以跳过 `setup`。安装完成后，**新建一个 Codex 任务**，直接开始对话。
+然后**新建一个 Codex 任务**，说“我还有什么作业和 DDL？”即可。已有 bbwatch 凭据时通常可以跳过 `setup`。
 
-### Windows 10/11：只安装原生 CLI
+<details>
+<summary>Python 版本、安装检查与完整说明</summary>
 
-Windows CLI 不要求安装 Codex，也不使用 WSL。请在 PowerShell 中运行：
+如果新版 Python 的命令是 `python3.12`，将安装命令中的 `python3` 换成它。可以先运行 `python3 scripts/install_codex.py --dry-run` 查看检查结果与安装位置。
+
+安装器不会登录学校、扫描课程或创建定时任务。这里安装的是 **Codex 本机插件**，不是 ChatGPT 网页版的远程接入。
+
+完整步骤、安装路径及移除方式见 [Codex 安装指南](CODEX.md)。
+
+</details>
+
+<a id="windows-cli"></a>
+<a id="windows-1011只安装原生-cli"></a>
+
+### Windows 10/11 · 原生 CLI
+
+在 PowerShell 中运行；请先确认 `py --version` 为 **3.11+**：
 
 ```powershell
 git clone https://github.com/jsyzlbw/bbwatch.git
@@ -90,47 +93,67 @@ cd bbwatch
 py scripts/install_codex.py --cli-only
 ```
 
-`py` 默认使用已安装的最新版 Python；版本低于 3.11 时安装器会停止并提示。需要指定解释器时，可加 `--python <python.exe 路径>`。
-
-安装器会把 venv 的 `Scripts` 目录加入当前用户 PATH，并打印 MCP 启动命令；它不会修改 Claude Code、Codex 或 Cursor 的配置，如需接入 AI 客户端，需要另外把该命令添加到客户端的 MCP 配置中（本版本不包含这一步）。请新开一个 PowerShell，再运行：
+安装器会把命令目录加入当前用户 PATH。**新开一个 PowerShell 窗口**，再运行：
 
 ```powershell
 bbwatch setup
 bbwatch whoami
 bbwatch scan
 bbwatch tasks
-bbwatch courses
-bbwatch download MAT3007
 bbwatch dashboard
 ```
 
-Windows 数据目录为 `%USERPROFILE%\.bbwatch`，运行环境为 `%LOCALAPPDATA%\bbwatch\runtime`，默认课件目录为 `%USERPROFILE%\Downloads\bbwatch`。密码仍由 Windows Credential Manager 通过 `keyring` 保存。首次登录、扫描和下载需要在你的 Windows 网络与 Blackboard 账号环境中验证。
+**当前支持范围：** CLI 与本机看板不要求 Codex，也不使用 WSL。安装器会打印 MCP 启动命令，但不会自动配置 Codex、Claude Code 或 Cursor；Windows Claude Code hooks、Windows Toast 与完整 Codex 插件注册暂未提供。
 
-### 用 Claude Code：让 AI 帮你安装
+<details>
+<summary>解释器选择、Windows 路径与验证说明</summary>
 
-把这句话发给 Claude Code：
+安装器本身必须由 Python 3.11+ 启动；版本过低时会停止并提示。也可以使用已安装的新版解释器启动，例如 `py -3.12 scripts/install_codex.py --cli-only`。`--python <python.exe 路径>` 可指定运行环境使用的解释器。
 
-> 请按这个仓库的 INSTALL.md 帮我安装 bbwatch 插件：https://github.com/jsyzlbw/bbwatch 。安装后请给我在本机终端配置账号的命令。
+| 内容 | 位置 |
+| :--- | :--- |
+| 用户数据 | `%USERPROFILE%\.bbwatch` |
+| Python 运行环境 | `%LOCALAPPDATA%\bbwatch\runtime\venv` |
+| 默认下载目录 | `%USERPROFILE%\Downloads\bbwatch` |
+| 凭据 | Windows Credential Manager（通过 `keyring`） |
 
-账号与密码在本机终端输入即可，**无需发到聊天中**。手动安装、首次扫描及排障见 [Claude Code 完整指南](INSTALL.md)。完成后新开一个会话。
+首次登录、扫描与下载仍需在你的 Windows 网络和 Blackboard 账号环境中验证。详见 [Windows CLI 说明](CODEX.md#windows-1011-原生-cli)。
+
+</details>
+
+<a id="claude-install"></a>
+
+### macOS / Linux · Claude Code
+
+把下面这段话发给 Claude Code：
+
+> 请按 https://github.com/jsyzlbw/bbwatch 的 INSTALL.md 为当前用户安装 bbwatch。完成安装与初始化后，给我完整的本机终端命令，用于配置账号、验证登录和首次扫描；账号密码由我在终端输入。
+
+完成后**新开一个 Claude Code 会话**。它会先展示本地摘要；从未扫描或距上次扫描超过两小时时，会尝试后台刷新，摘要可能仍是刷新前的数据。
+
+想自己安装？查看 [Claude Code 完整指南](INSTALL.md)，其中包含插件市场命令、实际引擎路径与 Linux 密钥环排障。
+
+> **账号安全：** 密码只需在本机终端输入，输入时不回显。无需发进聊天，也不要写入仓库。
 
 <a id="usage"></a>
 
-## 怎么使用：直接说你想做什么
+## 对话示例
 
-安装并完成首次扫描后，可以这样问：
+配置好 AI 客户端并完成首次扫描后，直接说你想做什么：
 
-| 直接对 AI 说 | 用途 |
+| 对 AI 说 | 对应操作 |
 | :--- | :--- |
-| “我还有什么作业和 ddl？” | 查看当前任务清单 |
-| “扫一下，看看有没有新作业或者出分。” | 实时刷新 Blackboard 更新 |
+| “我还有什么作业和 DDL？” | 查看本地任务清单 |
+| “扫一下，看看有没有新作业或者出分。” | 实时扫描课程更新 |
 | “哪些作业交了还没出分？” | 查看待批改作业 |
-| “把 MAT3007 的课件都下载下来。” | 批量下载指定课程的资料 |
-| “第 1 个作业我做完了。” | 标记当前列表中的任务完成 |
-| “第 1 个还没做完，帮我撤销。” | 恢复为未完成 |
-| “查找我下载过的 slides。” | 检索本机下载记录 |
+| “把 MAT3007 的课件都下载下来。” | 增量下载指定课程资料 |
+| “第 1 个作业做完了。” / “撤销第 1 个的完成状态。” | 更新本地完成记录 |
+| “查找我下载过的 slides。” | 检索本地下载记录 |
 
-**一个对话示例**（下方内容为演示）：
+<details>
+<summary>展开一段示例对话</summary>
+
+以下为演示内容，课程与任务不代表你的实际数据。
 
 > **你：** 我还有什么作业？
 >
@@ -142,118 +165,130 @@ Windows 数据目录为 `%USERPROFILE%\.bbwatch`，运行环境为 `%LOCALAPPDAT
 >
 > **bbwatch：** 已下载到本机的 `~/Downloads/bbwatch/`，按课程和文件夹整理好了。
 
-查询清单通常读取**本地缓存**；想要最新状态时，说“扫描一下”。截止时间按北京时间（UTC+8）展示。勾选完成只更新本地清单，实际提交仍需在 Blackboard 完成。
+</details>
 
-Claude Code 另有快捷命令：`/bb-scan`、`/bb-tasks`、`/bb-download`、`/bb-setup`。
+Claude Code 还支持快捷命令：`/bb-scan`、`/bb-tasks`、`/bb-download`、`/bb-setup`。
 
 <a id="dashboard"></a>
 
-## 任务看板：打开浏览器，一起看清楚
+## 任务看板
 
-Codex 全局安装后，在终端运行：
+**学习，有条不紊。** 把下一项截止、待完成、待批改与已完成放在同一个页面，支持日间 / 夜间主题与小屏幕布局。
+
+<table>
+  <tr>
+    <th width="50%">日间 · Light</th>
+    <th width="50%">夜间 · Dark</th>
+  </tr>
+  <tr>
+    <td><a href="docs/assets/dashboard-light.png"><img src="docs/assets/dashboard-light.png" alt="日间主题：下一项截止、待完成清单与待批改分组" width="100%"></a></td>
+    <td><a href="docs/assets/dashboard-dark.png"><img src="docs/assets/dashboard-dark.png" alt="夜间主题：同一任务清单的深色界面" width="100%"></a></td>
+  </tr>
+</table>
+
+<p align="center"><sub>真实界面 · 演示数据 · 点击图片查看大图</sub></p>
+
+启动方式：
 
 ```bash
+# macOS · Codex 全局安装
 ~/.local/bin/bbwatch dashboard
 ```
 
-按终端提示打开本机地址，默认是 **http://127.0.0.1:8765/**。看板支持：
+Windows CLI 用户运行 `bbwatch dashboard`；Claude Code 用户使用[实际引擎路径下的命令](INSTALL.md#网页看板)。打开终端提示的本机地址，默认是 **http://127.0.0.1:8765/**，保持终端开启，退出时按 **Ctrl+C**。
 
-- 先看任务数量与“下一项截止”，再按截止时间浏览待办，识别逾期与临近截止的作业。
-- 勾选或撤销完成；展开“已提交 · 待批改”“已完成”“已隐藏”查看详情，隐藏的任务可随时恢复。
-- 点击“扫描更新”，查看扫描进度与结果；课程较多时可能需要几分钟，完成后清单自动更新。
-- 切换日间 / 夜间主题；小屏幕上会自动调整布局，方便阅读和操作。
+- **看清进度：** 标记或撤销完成，展开待批改 / 已完成 / 已隐藏分组，隐藏任务可恢复。
+- **主动更新：** 点击“扫描更新”查看进度与结果；课程较多时可能需要几分钟。
+- **出错可恢复：** 扫描失败或部分完成时保留具体提示；断线时保留已载入清单，可点击“重新连接”。
+- **缓存刷新：** 页面可见时每分钟重读本地清单，不会因此扫描 Blackboard。
 
-尚未扫描时，看板会引导首次同步；扫描后没有待办时显示空清单。连接中断会明确提示，并保留已经载入的清单，可点击“重新连接”重试。
+<a id="commands"></a>
 
-扫描失败或部分完成时，页面会保留具体提示，处理后可点击“重新扫描”；失败尝试不会改变上次数据更新时间。页面可见时，每分钟会重新读取本地清单，这不会主动发起 Blackboard 扫描。
+## 命令速查
 
-看板运行在本机。保持终端窗口开启，退出时按 **Ctrl+C**。Claude Code 用户使用安装指南中实际引擎路径下的 `bbwatch` 命令。
+下表以 `bbwatch` 表示入口：macOS Codex 用户可用 `~/.local/bin/bbwatch`，Windows CLI 用户直接使用 `bbwatch`；其他安装方式请使用对应环境中的完整路径。
+
+| 命令 | 作用 |
+| :--- | :--- |
+| `bbwatch setup` / `bbwatch whoami` | 配置账号 / 验证学校登录 |
+| `bbwatch scan` | 扫描课程更新 |
+| `bbwatch tasks` / `bbwatch pending` | 查看任务 / 查看待批改作业 |
+| `bbwatch done N` / `bbwatch undone N` | 标记第 N 项完成 / 撤销；先用 `tasks` 确认编号 |
+| `bbwatch courses` | 查看在读课程及编号 |
+| `bbwatch download MAT3007` | 下载课程代码匹配的资料，也可使用课程编号 |
+| `bbwatch find slides` | 按关键词检索本地下载记录 |
+| `bbwatch dashboard` | 启动网页看板；可用 `--port 8766` 更换端口 |
+| `bbwatch config` / `bbwatch doctor` | 查看配置 / 本地自检 |
 
 <a id="faq"></a>
 
 ## 常见问题
 
 <details>
-<summary><strong>装好后，为什么还看不到作业？</strong></summary>
+<summary><strong>安装成功了，为什么没有作业？</strong></summary>
 
-安装只准备运行环境。你还需要配置学校账号，并完成第一次扫描。空缓存不代表 Blackboard 上没有作业。Codex 用户可先运行 `~/.local/bin/bbwatch whoami` 验证登录，再运行 `~/.local/bin/bbwatch scan`。
-
-</details>
-
-<details>
-<summary><strong>点击扫描后，时间为什么还停在很多天前？</strong></summary>
-
-扫描完成前会保留上次的数据与时间。新版会持续显示“扫描中”，完成后自动更新；失败时显示原因。旧版页面只等待约 48 秒，较慢的扫描完成后可能仍显示旧清单，此时刷新页面即可重新读取结果。
-
-更新安装后，在运行旧看板的终端按 **Ctrl+C**，重新运行 `bbwatch dashboard`，再刷新页面，才能启用新版扫描反馈。重复点击不会加快扫描，同一个看板只运行一份扫描。
+安装只准备运行环境。先用 `bbwatch setup` 配置账号，再用 `bbwatch whoami` 验证登录，最后运行 `bbwatch scan`。空缓存不代表 Blackboard 上没有作业；请使用你的安装方式对应的命令路径。
 
 </details>
 
 <details>
-<summary><strong>代理软件关了，bbwatch 还能扫描吗？</strong></summary>
+<summary><strong>账号、任务和课件保存在哪里？</strong></summary>
 
-可以。bbwatch 会在请求前读取代理设置：本机代理端口可用时走代理，代理关闭后自动直连。再次开启代理后也会自动使用，无需重启看板或换命令。其他应用的设置保持原样。
+凭据通过 `keyring` 保存：macOS 使用钥匙串，Windows 使用 Credential Manager，Linux 需要可用的系统密钥环。任务数据库、会话与配置默认位于用户主目录的 `.bbwatch`，课件默认下载到 `Downloads/bbwatch`；下载目录可以配置。
 
-若仍提示 `ConnectionError`，页面会说明连接故障的类别，处理后点击“重新扫描”。代理选择规则和排障见 [网络连接说明](CODEX.md#网络连接与代理自动切换)。
+课程和任务内容在对话查询时会作为工具结果提供给你使用的 AI 客户端。密码无需发送到聊天中。下载的课件请遵守课程使用与分发要求。
 
 </details>
 
 <details>
 <summary><strong>它会一直在后台扫描吗？</strong></summary>
 
-Codex 版默认按需运行，安装时不创建定时任务。Claude Code 版保留原有会话钩子：打开会话时展示摘要，从未扫描或距上次扫描超过两小时时尝试后台刷新。两种版本的行为分别写在各自安装指南中。
+Codex 默认按需运行，安装时不创建定时任务。Claude Code 在新会话中展示摘要，并在从未扫描或缓存超过两小时时尝试后台刷新。CLI 只在执行命令时工作；看板定期读取缓存，不等于定时扫描学校网站。
 
 </details>
 
 <details>
-<summary><strong>账号、任务和课件放在哪里？</strong></summary>
+<summary><strong>学校改了密码，或者登录失败怎么办？</strong></summary>
 
-macOS 上，账号凭据由本机钥匙串保存；登录时通过学校认证系统使用。任务数据库、会话与配置默认保存在 `~/.bbwatch`，课件默认下载到 `~/Downloads/bbwatch/`。配置可以修改下载目录。
-
-对话查询的课程与任务内容会作为工具结果提供给你正在使用的 AI 客户端。密码不需要发送到聊天中，也不应写入仓库。
+在本机终端重新运行 `bbwatch setup`，再用 `bbwatch whoami` 验证。连续三次账号或密码认证失败会触发一小时的本地暂停；成功保存凭据可重置暂停，但不等于新密码已验证。不要反复重试错误凭据。详见 [登录排障](CODEX.md#登录失败或提示认证连续失败已熔断)。
 
 </details>
 
 <details>
-<summary><strong>我已经装了 Claude Code 版，还要重新配置吗？</strong></summary>
+<summary><strong>关掉代理后还能扫描吗？</strong></summary>
 
-通常不需要。两个客户端使用同一个钥匙串服务和默认数据目录。Codex 安装器独立管理自己的运行环境，已有的任务记录与凭据会保留。安装后新建 Codex 任务即可加载插件。
+配置的本机回环代理端口不可连接时，bbwatch 会尝试直连；重新打开代理后会再次检查。远程代理或已连接后的网络错误不会自动直连重试。macOS 还支持读取系统手动代理设置，暂不解析 PAC 脚本。
 
-</details>
-
-<details>
-<summary><strong>学校改了密码，或者提示登录失败怎么办？</strong></summary>
-
-在本机终端重新运行 `bbwatch setup` 更新凭据，再用 `bbwatch whoami` 验证。运行 `bbwatch doctor` 可以检查本地配置。命令的完整路径见你所用版本的安装指南。
+这不会修改其他应用的代理设置。完整规则见 [网络连接说明](CODEX.md#网络连接与代理自动切换)。
 
 </details>
 
 <details>
-<summary><strong>下载和“标记完成”会影响 Blackboard 吗？</strong></summary>
+<summary><strong>扫描很慢、时间没变，或更新后仍看到旧页面？</strong></summary>
 
-下载会把你账号可访问的课程附件保存到本机；“标记完成”记录的是本地学习进度。作业提交与成绩管理仍在 Blackboard 中进行。课件请遵守课程的使用与分发要求。
+扫描完成前保留上次的数据与时间；课程较多时请等待几分钟，无需重复点击。失败或部分完成时查看提示，处理后重新扫描。旧版本页面可能需要手动刷新才能读取扫描结果。
+
+更新并重新安装后，在原终端按 **Ctrl+C** 停止旧看板，再运行 `bbwatch dashboard` 并刷新页面。macOS Codex 更新步骤见 [更新、检查与移除](CODEX.md#更新检查与移除)；Windows CLI 在仓库中更新后重新执行 `py scripts/install_codex.py --cli-only`；Claude Code 更新插件后重新运行 `claude --init-only`。
 
 </details>
 
-## 命令速查
+<details>
+<summary><strong>Codex 与 Claude Code 能共用数据吗？</strong></summary>
 
-下面用 `bbwatch` 表示命令入口。macOS Codex 用户可以写成 `~/.local/bin/bbwatch`；Windows CLI 用户直接使用 PATH 中的 `bbwatch`。
+同一台机器、同一用户下，两者默认共用 `bbwatch` 密钥环服务与 `.bbwatch` 数据目录，通常无需重新配置账号。Codex 安装器独立管理运行环境，已有任务与凭据会保留；两个客户端的自动刷新行为仍然不同。
 
-| 命令 | 作用 |
-| :--- | :--- |
-| `bbwatch setup` / `bbwatch whoami` | 配置账号 / 验证登录 |
-| `bbwatch scan` | 扫描课程更新，支持 macOS 桌面通知 |
-| `bbwatch tasks` / `bbwatch pending` | 查看任务 / 查看待批改作业 |
-| `bbwatch done N` / `bbwatch undone N` | 将第 N 项标记完成 / 撤销 |
-| `bbwatch courses` | 查看在读课程 |
-| `bbwatch download MAT3007` | 下载指定课程的课件 |
-| `bbwatch find slides` | 按路径关键词查找已下载文件 |
-| `bbwatch dashboard` | 启动网页任务看板 |
-| `bbwatch config` / `bbwatch doctor` | 查看配置 / 本地自检 |
+</details>
 
-## 给开发者
+<a id="development"></a>
 
-Python 引擎负责学校登录、数据抓取、SQLite 变化比对与增量下载；MCP 接口把这些能力提供给 AI 客户端。
+## 开发与贡献
+
+Python 引擎负责学校登录、数据抓取、SQLite 变化比对与增量下载；MCP 接口将能力提供给 AI 客户端，本机看板提供可视化入口。
+
+<details>
+<summary>本地开发与测试</summary>
+
+macOS / Linux：
 
 ```bash
 git clone https://github.com/jsyzlbw/bbwatch.git
@@ -263,20 +298,38 @@ python3 -m venv .venv
 PYTHONPATH=src .venv/bin/python -m pytest -q
 ```
 
-| 目录 | 内容 |
+Windows PowerShell：
+
+```powershell
+git clone https://github.com/jsyzlbw/bbwatch.git
+cd bbwatch
+py -3.11 -m venv .venv
+.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.venv\Scripts\python.exe -m pytest -q
+```
+
+Windows 示例使用 Python 3.11；若安装的是更新版本，请相应替换 `-3.11`。测试通过不等于真实学校账号与网络环境已验证。
+
+</details>
+
+| 路径 | 内容 |
 | :--- | :--- |
-| [`src/bbwatch/`](src/bbwatch/) | Python 引擎、MCP 接口与网页看板 |
+| [`src/bbwatch/`](src/bbwatch/) | 引擎、MCP 接口与网页看板 |
 | [`plugins/bbwatch/`](plugins/bbwatch/) | Codex 插件与中文使用技能 |
 | [`.claude-plugin/`](.claude-plugin/) | Claude Code 插件定义 |
+| [`scripts/`](scripts/) | 安装器与初始化脚本 |
 | [`tests/`](tests/) | 单元测试、安装测试与 MCP 协议测试 |
 | [`docs/superpowers/`](docs/superpowers/) | 设计文档与实现计划 |
 
-后续方向：Windows Claude Code hooks、Windows Toast、邮件 / Telegram 通知渠道。欢迎通过 [Issues](https://github.com/jsyzlbw/bbwatch/issues) 反馈问题或提交改进。
+欢迎通过 [Issues](https://github.com/jsyzlbw/bbwatch/issues) 反馈问题或提交改进。反馈时请注明系统、Python 版本、安装方式与报错，**不要附带密码、会话凭据或个人课程数据**。
+
+后续方向：Windows Claude Code hooks、Windows Toast，以及邮件 / Telegram 通知渠道。
 
 ---
 
 <div align="center">
 
-[MIT License](LICENSE) · 为 CUHK-SZ 的学习日常做一点减法。
+**为 CUHK-SZ 的学习日常做一点减法。**<br>
+[MIT License](LICENSE) · [Codex 安装指南](CODEX.md) · [Claude Code 安装指南](INSTALL.md) · [回到顶部](#bbwatch)
 
 </div>
