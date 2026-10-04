@@ -1,6 +1,6 @@
 # Codex 安装指南
 
-在 Codex 桌面应用或 Codex CLI 中，通过自然语言管理港中深 Blackboard。兼容已有 Claude Code 版本的数据与凭据。这里的“全局”是当前 macOS 用户的所有 Codex 项目，不需要管理员权限。
+在 Codex 桌面应用或 Codex CLI 中，通过自然语言管理港中深 Blackboard。兼容已有 Claude Code 版本的数据与凭据。这里的“全局”是当前用户的所有 Codex 项目，不需要管理员权限。
 
 这是 **Codex 本机插件**。ChatGPT 网页版的远程 MCP 接入需要额外部署 HTTPS 服务；本安装器不会创建云端服务或公开本机端口。
 
@@ -17,6 +17,30 @@ python3 --version
 ```
 
 下面以 `python3` 为例。如果它低于 3.11，请改用已经安装的新版 Python，例如 `python3.12`；本文对应命令都要使用同一个解释器。
+
+## Windows 10/11 原生 CLI
+
+Windows 本阶段先支持不依赖 WSL 的 CLI，不要求安装 Codex，也不会注册 Codex 插件。在 PowerShell 中从仓库目录运行：
+
+```powershell
+py scripts/install_codex.py --cli-only
+```
+
+`py` 默认使用已安装的最新版 Python；版本低于 3.11 时安装器会停止并提示。需要指定解释器时，可加 `--python <python.exe 路径>`。
+
+安装器把运行环境安装到 `%LOCALAPPDATA%\bbwatch\runtime\venv`，把其中的 `Scripts` 目录加入当前用户 PATH，并打印 MCP 启动命令（绝对路径的 `python.exe -m bbwatch.mcp_server`）。它**不会**修改 Codex、Claude Code 或 Cursor 等 AI 客户端的配置；接入客户端是单独的一步，本版本不包含。新开 PowerShell 后即可运行：
+
+```powershell
+bbwatch setup
+bbwatch whoami
+bbwatch scan
+bbwatch tasks
+bbwatch courses
+bbwatch download MAT3007
+bbwatch dashboard
+```
+
+Windows 用户数据保持在 `%USERPROFILE%\.bbwatch`，默认下载目录为 `%USERPROFILE%\Downloads\bbwatch`。Claude Code Windows hooks、Windows Toast 和完整 Codex 插件注册留待后续阶段。
 
 ## 1. 下载项目并安装
 
