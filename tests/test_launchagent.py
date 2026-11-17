@@ -1,9 +1,17 @@
 import argparse
 import plistlib
+import subprocess
+import sys
 
 import pytest
 
 from bbwatch import cli, launchagent
+
+
+@pytest.fixture(autouse=True)
+def fake_uid(monkeypatch):
+    # Windows has no os.getuid, even when a test simulates sys.platform=darwin.
+    monkeypatch.setattr(launchagent.os, "getuid", lambda: 1000, raising=False)
 
 
 def jobs(tmp_path, **changes):
@@ -49,7 +57,7 @@ def test_install_reinstall_and_uninstall(tmp_path, monkeypatch):
     files = launchagent.agent_files(tmp_path)
     monkeypatch.setattr(launchagent, "agent_files", lambda: files)
     calls = []
-    monkeypatch.setattr(launchagent, "launchctl", lambda *a, **kw: calls.append(a))
+    monkeypatch.setattr(launchagent, "launchctl", lambda *a, **kw: calls.append(a) or subprocess.CompletedProcess(a, 0))
     args = argparse.Namespace(
         action="install",
         interval=3600,
@@ -88,6 +96,7 @@ def test_cli_dispatch(monkeypatch):
     assert seen[0].dest == "/tmp/with spaces"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="sync uses Unix flock")
 def test_sync_continues_after_scan_failure(tmp_path, monkeypatch):
     monkeypatch.setenv("BBWATCH_HOME", str(tmp_path))
     monkeypatch.setattr(cli, "main", lambda args: 1)
@@ -115,6 +124,7 @@ def test_sync_continues_after_scan_failure(tmp_path, monkeypatch):
     assert closed == [True]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="sync uses Unix flock")
 def test_sync_continues_after_unknown_course(tmp_path, monkeypatch):
     monkeypatch.setenv("BBWATCH_HOME", str(tmp_path))
     monkeypatch.setattr(cli, "main", lambda args: 0)
@@ -137,6 +147,7 @@ def test_sync_continues_after_unknown_course(tmp_path, monkeypatch):
     assert len(calls) == 1
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="sync uses Unix flock")
 def test_sync_skips_when_locked(tmp_path, monkeypatch):
     import fcntl
 
@@ -155,7 +166,7 @@ def test_install_rejects_foreign_plist_before_starting(tmp_path, monkeypatch):
     file.parent.mkdir(parents=True)
     file.write_bytes(plistlib.dumps({"Label": "some.other.app"}))
     calls = []
-    monkeypatch.setattr(launchagent, "launchctl", lambda *a, **kw: calls.append(a))
+    monkeypatch.setattr(launchagent, "launchctl", lambda *a, **kw: calls.append(a) or subprocess.CompletedProcess(a, 0))
     with pytest.raises(ValueError, match="拒绝覆盖"):
         launchagent.manage(
             argparse.Namespace(
@@ -165,6 +176,7 @@ def test_install_rejects_foreign_plist_before_starting(tmp_path, monkeypatch):
     assert not calls
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="sync uses Unix flock")
 def test_sync_downloads_incrementally_without_network(tmp_path, monkeypatch):
     """Exercise the real mirror/store path; all downloaded bytes stay in tmp_path."""
     from pathlib import Path
@@ -210,3 +222,45 @@ def test_sync_downloads_incrementally_without_network(tmp_path, monkeypatch):
     assert (destination / "MAT3007" / "Content" / "slides.pdf").read_bytes() == (
         b"tiny offline test fixture"
     )
+
+
+@pytest.mark.parametrize("state_code,state_error", [
+    (0, ""),
+    (1, "Permission denied"),
+    (1, 'Could not find service "unrelated" in domain for user gui: 1000'),
+])
+def test_uninstall_retains_plist_when_stop_not_confirmed(
+    tmp_path, monkeypatch, capsys, state_code, state_error
+):
+    monkeypatch.setattr(launchagent.sys, "platform", "darwin")
+    monkeypatch.setenv("BBWATCH_HOME", str(tmp_path / "data"))
+    file = tmp_path / "dashboard.plist"
+    file.write_bytes(b"existing job")
+    monkeypatch.setattr(launchagent, "agent_files", lambda: {"dashboard": file})
+
+    def call(*args, **kwargs):
+        if args[0] == "bootout":
+            return subprocess.CompletedProcess(args, 1, stderr="stop failed")
+        return subprocess.CompletedProcess(args, state_code, stderr=state_error)
+
+    monkeypatch.setattr(launchagent, "launchctl", call)
+    with pytest.raises(RuntimeError, match="无法停止任务"):
+        launchagent.manage(argparse.Namespace(action="uninstall"))
+    assert file.read_bytes() == b"existing job"
+    assert "已移除" not in capsys.readouterr().out
+
+
+def test_uninstall_unloaded_job_is_idempotent(tmp_path, monkeypatch):
+    monkeypatch.setattr(launchagent.sys, "platform", "darwin")
+    monkeypatch.setenv("BBWATCH_HOME", str(tmp_path / "data"))
+    file = tmp_path / "dashboard.plist"
+    file.write_bytes(b"unloaded job")
+    monkeypatch.setattr(launchagent, "agent_files", lambda: {"dashboard": file})
+    message = f'Could not find service "{launchagent.LABEL}.dashboard" in domain for user gui: 1000'
+    monkeypatch.setattr(
+        launchagent, "launchctl",
+        lambda *args, **kw: subprocess.CompletedProcess(args, 1, stderr=message),
+    )
+    assert launchagent.manage(argparse.Namespace(action="uninstall")) == 0
+    assert not file.exists()
+    assert launchagent.manage(argparse.Namespace(action="uninstall")) == 0

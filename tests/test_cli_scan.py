@@ -75,3 +75,37 @@ def test_format_tasks_index_marks_and_markers():
 
 def test_format_tasks_empty():
     assert "没有需要跟踪" in format_tasks([], NOW)
+
+
+def test_cmd_scan_propagates_partial_failure_and_closes_store(tmp_path, monkeypatch, capsys):
+    from bbwatch import cli
+    from bbwatch.config import AppPaths
+
+    class FailingClient(FakeClient):
+        def list_announcements(self, cid):
+            raise RuntimeError("offline fixture")
+
+    store = Store(":memory:")
+    closed = []
+    original_close = store.close
+
+    def close():
+        closed.append(True)
+        original_close()
+
+    monkeypatch.setattr(store, "close", close)
+    monkeypatch.setattr(cli, "_authed", lambda: (FailingClient(), store, AppPaths(tmp_path)))
+    monkeypatch.setattr(cli, "MacNotifier", FakeNotifier)
+    assert cli.main(["scan"]) == 1
+    assert "部分维度失败" in capsys.readouterr().out
+    assert closed == [True]
+
+
+def test_cmd_scan_success_returns_zero(tmp_path, monkeypatch):
+    from bbwatch import cli
+    from bbwatch.config import AppPaths
+
+    store = Store(":memory:")
+    monkeypatch.setattr(cli, "_authed", lambda: (FakeClient(), store, AppPaths(tmp_path)))
+    monkeypatch.setattr(cli, "MacNotifier", FakeNotifier)
+    assert cli.main(["scan"]) == 0

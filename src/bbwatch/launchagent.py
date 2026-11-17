@@ -53,8 +53,30 @@ def build_agents(
     return result
 
 
-def launchctl(*args: str, check: bool = True):
-    return subprocess.run(["/bin/launchctl", *args], check=check)
+def launchctl(*args: str, check: bool = True, capture_output: bool = False):
+    return subprocess.run(
+        ["/bin/launchctl", *args], check=check, capture_output=capture_output,
+        text=True, env={**os.environ, "LC_ALL": "C"},
+    )
+
+
+def stop_agent(domain: str, kind: str) -> None:
+    """Fail closed: retain the plist unless stopped or explicitly reported absent."""
+    target = f"{domain}/{LABEL}.{kind}"
+    result = launchctl("bootout", target, check=False, capture_output=True)
+    if result.returncode == 0:
+        return
+    # bootout can fail for reasons other than an unloaded job. Check the exact
+    # service diagnostic, not just a nonzero print status (e.g. permission error).
+    state = launchctl("print", target, check=False, capture_output=True)
+    absent = f'Could not find service "{LABEL}.{kind}" in domain '
+    if state.returncode != 0 and any(
+        line.strip().startswith(absent) for line in (state.stderr or "").splitlines()
+    ):
+        return
+    raise RuntimeError(
+        f"无法停止任务 {target}；保留 plist 以便重试：{result.stderr or result.returncode}"
+    )
 
 
 def manage(args) -> int:
@@ -71,7 +93,7 @@ def manage(args) -> int:
         return 0
     if args.action == "uninstall":
         for kind, file in files.items():
-            launchctl("bootout", f"{domain}/{LABEL}.{kind}", check=False)
+            stop_agent(domain, kind)
             file.unlink(missing_ok=True)
         print("已移除自动运行任务；保留数据、课件及日志")
         return 0
