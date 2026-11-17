@@ -163,3 +163,50 @@ def test_install_rejects_foreign_plist_before_starting(tmp_path, monkeypatch):
             )
         )
     assert not calls
+
+
+def test_sync_downloads_incrementally_without_network(tmp_path, monkeypatch):
+    """Exercise the real mirror/store path; all downloaded bytes stay in tmp_path."""
+    from pathlib import Path
+
+    from bbwatch.models import Attachment, Content, Course
+    from bbwatch.store import Store
+
+    monkeypatch.setenv("BBWATCH_HOME", str(tmp_path / "state"))
+    monkeypatch.setattr(cli, "main", lambda args: 0)
+    course = Course("_c1", "MAT3007", "Math", "_t1", "Student", "Yes", "Classic")
+    content = Content("_d1", "Slides", "resource/x-bb-document", modified="2026-11-17")
+    calls = []
+
+    class Client:
+        def get_me(self):
+            return argparse.Namespace(id="me")
+
+        def list_courses(self, uid):
+            return [course]
+
+        def walk_contents(self, cid):
+            return iter([(["Content"], content)])
+
+        def list_attachments(self, cid, content_id):
+            return [Attachment("_a1", "slides.pdf")]
+
+        def download_attachment(self, cid, content_id, att_id, path):
+            calls.append(path)
+            Path(path).write_bytes(b"tiny offline test fixture")
+            return len(b"tiny offline test fixture")
+
+    def authed():
+        paths = cli.AppPaths()
+        paths.ensure_dirs()
+        return Client(), Store(paths.db_path), paths
+
+    monkeypatch.setattr(cli, "_authed", authed)
+    destination = tmp_path / "download directory"
+    args = argparse.Namespace(courses=["MAT3007"], dest=str(destination))
+    assert launchagent.run_sync(args) == 0
+    assert launchagent.run_sync(args) == 0
+    assert len(calls) == 1
+    assert (destination / "MAT3007" / "Content" / "slides.pdf").read_bytes() == (
+        b"tiny offline test fixture"
+    )
