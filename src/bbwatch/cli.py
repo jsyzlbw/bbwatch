@@ -330,7 +330,8 @@ def cmd_dashboard(args) -> int:
     url = f"http://127.0.0.1:{port}/"
     print(f"任务清单：{url}（Ctrl-C 退出）")
     with contextlib.suppress(Exception):
-        webbrowser.open(url)
+        if not args.no_browser:
+            webbrowser.open(url)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -376,6 +377,8 @@ def main(argv=None) -> int:
     _configure_console()
     p = argparse.ArgumentParser(prog="bbwatch")
     sub = p.add_subparsers(dest="cmd", required=True)
+    from .launchagent import add_parser
+    add_parser(sub)
     p_setup = sub.add_parser("setup", help="录入并保存学校账号密码到钥匙串")
     p_setup.add_argument("--stdin", action="store_true", help="从 stdin 读两行(账号/密码)，非交互")
     p_setup.set_defaults(fn=cmd_setup)
@@ -391,6 +394,7 @@ def main(argv=None) -> int:
     p_undone.set_defaults(fn=cmd_undone)
     p_dash = sub.add_parser("dashboard", help="启动本地任务清单网页(浏览器查看/勾选)")
     p_dash.add_argument("--port", type=int, help="端口(默认 8765)")
+    p_dash.add_argument("--no-browser", action="store_true", help="启动时不打开浏览器")
     p_dash.set_defaults(fn=cmd_dashboard)
     sub.add_parser("courses", help="列出在读课程(编号)").set_defaults(fn=cmd_courses)
     p_dl = sub.add_parser("download", help="增量镜像某课程的全部课件")
