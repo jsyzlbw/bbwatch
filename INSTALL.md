@@ -139,3 +139,65 @@ Claude 的插件清单位于 `.claude-plugin/`，市场名定义在 `.claude-plu
 插件缓存和引擎运行环境分开：`Setup` 钩子调用 `scripts/bootstrap.sh`，在 `${CLAUDE_PLUGIN_DATA}/.venv` 安装引擎；根目录 `.mcp.json` 与 `SessionStart` 钩子都使用这个环境。引擎或依赖更新后，需要重新运行 `claude --init-only`。
 
 `scripts/bootstrap.py` 是跨平台 bootstrap 入口；`bootstrap.sh` 保留 macOS/Linux 入口，`bootstrap.ps1` 提供 Windows PowerShell 入口。Claude Code 的 Windows hook 注册留待后续阶段。
+
+## macOS 登录自动运行（无需 AI 客户端）
+
+先使用 Python 3.11+ 安装独立 CLI。请使用长期保留的虚拟环境，LaunchAgent
+会记录当前 Python 的绝对路径；删除或移动该环境后需要重新安装任务。
+
+```bash
+cd /你的路径/bbwatch
+python3 -m venv .venv
+.venv/bin/python -m pip install .
+.venv/bin/bbwatch setup
+.venv/bin/bbwatch whoami
+.venv/bin/bbwatch courses
+
+# 每小时扫描，并增量下载这两门课；替换为你的实际课程代码和目录
+.venv/bin/bbwatch agent install --interval 3600 \
+  --courses MAT3007 CSC1001 --dest "$HOME/Documents/Blackboard"
+```
+
+`--interval` 单位为秒，最小 60 秒。建议课程较多时使用一小时或更长周期。
+`--courses` 使用能唯一匹配的课程代码，不接受易随学期变化的课程列表编号。
+`--dest` 支持带空格的路径和 `~`；看板端口可用 `--port 8766` 修改。
+
+安装会立即启动两个用户任务，并在以后每次登录 macOS 后自动运行：
+
+- `cn.edu.cuhk.bbwatch.dashboard`：维持本地看板进程，异常退出后重启；
+  默认地址 `http://127.0.0.1:8765/`，不会自动打开浏览器。
+- `cn.edu.cuhk.bbwatch.sync`：启动时及每个周期执行一次扫描，然后下载指定课程。
+  扫描沿用 `config.toml` 的课程过滤设置；下载由 `--courses` 单独指定。
+  单门课下载失败不会阻止其他课程下载，非认证类扫描失败仍会尝试下载；失败或部分完成状态记入日志并返回非零退出码。
+  同一次同步复用认证结果；认证被拒时不再用相同凭据立即重试下载。
+
+这不是登录前的系统服务。用户退出登录后任务停止；电脑休眠期间不执行，唤醒后
+由 launchd 调度，不保证严格的墙钟时间。同一同步任务不会并发执行，长任务期间
+的触发不会形成并行下载。看板手动扫描仍遵循原有扫描机制。
+
+配置写入 `~/Library/LaunchAgents/cn.edu.cuhk.bbwatch.{dashboard,sync}.plist`。
+任务数据默认仍在 `~/.bbwatch`，支持安装时设置 `BBWATCH_HOME`。
+标准输出和错误分别保留在该数据目录的 `launchagent-logs/` 下，包含同步开始、结束
+时间和下载结果；日志目前不会自动轮转，需要自行定期清理。凭据沿用 macOS 钥匙串，
+首次使用请先在交互终端完成 `setup` 和 `whoami`。
+
+```bash
+.venv/bin/bbwatch agent status
+# 修改周期、课程或目录：再次运行完整的 agent install 命令
+# 手动执行一轮，便于验证
+.venv/bin/bbwatch agent run --courses MAT3007 --dest "$HOME/Documents/Blackboard"
+# 停止任务并删除 plist；保留账号、数据库、日志和已下载课件
+.venv/bin/bbwatch agent uninstall
+```
+
+下载为单向增量保存，不会删除学校端已移除的文件，也不会执行 Git commit/push。
+现有下载记录会复用旧文件路径，因此应在首次下载前确定固定目录；修改 `--dest`
+不会迁移之前下载的文件。更新源代码后需重新运行 `pip install .`，再运行完整的
+`agent install` 命令以重启旧进程。安装前请停止手动启动的同端口看板。
+
+卸载时会确认任务已停止或本来未加载，之后才删除对应 plist；停止或查询失败时
+保留配置，指出失败任务并返回非零。安装/更新前保存原配置和加载状态；失败时
+停止本次启动的任务，首次安装删除新配置，更新则恢复原配置并重新加载原先已加载
+的任务（不会加载原先未加载的任务）。launchd 的 enabled/disabled 覆盖设置保持不变。
+如果系统调用导致回滚也失败，会报告具体任务并保留无法确认已停止任务的配置，
+不会声称回滚成功。恢复已加载任务需要重新加载，不能恢复原进程 PID 或进行中的下载。

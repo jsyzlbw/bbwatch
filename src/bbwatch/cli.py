@@ -10,7 +10,7 @@ from .auth import login as adfs_login
 from .bbclient import API, BB, BbClient
 from .config import DEFAULT_CONFIG_TOML, AppPaths, load_config, make_course_filter
 from .downloader import mirror
-from .errors import TransportError
+from .errors import AuthError, TransportError
 from .notifier import MacNotifier, deliver_pending
 from .platform import default_download_dir, is_windows
 from .scanner import scan
@@ -47,8 +47,18 @@ def _authed():
     paths.ensure_dirs()
     store = Store(paths.db_path)
 
+    auth_failure = None
+
     def relogin():
-        adfs_login(transport, creds)
+        nonlocal auth_failure
+        if auth_failure is not None:
+            raise auth_failure
+        try:
+            adfs_login(transport, creds)
+        except AuthError as exc:
+            # A rejected password must not be retried by subsequent scan/download requests.
+            auth_failure = exc
+            raise
         save_session(transport, paths.session_path)
 
     def verify(t):
@@ -77,6 +87,15 @@ def run_whoami(transport: Transport, creds: Credentials, login_fn=adfs_login) ->
 
 
 def run_scan(client, store, notifier, *, now: str, course_filter=None, archive_weeks: int = 0) -> str:
+    text, _failed = run_scan_with_status(
+        client, store, notifier, now=now, course_filter=course_filter, archive_weeks=archive_weeks
+    )
+    return text
+
+
+def run_scan_with_status(
+    client, store, notifier, *, now: str, course_filter=None, archive_weeks: int = 0
+) -> tuple[str, bool]:
     """登录后的扫描装配（client 已就绪，便于测试注入）。
     真实 client(含 clone) 并行抓取提速；测试用的 FakeClient 无 clone → 串行。"""
     me = client.get_me()
@@ -97,7 +116,7 @@ def run_scan(client, store, notifier, *, now: str, course_filter=None, archive_w
     if archived:
         lines.append(f"已归档 {archived} 个逾期旧作业")
     lines.append(f"未完成作业：{len(outstanding)} 项（bbwatch tasks 查看）")
-    return "\n".join(lines)
+    return "\n".join(lines), bool(result.failures)
 
 
 def format_tasks(tasks: list[dict], now: str) -> str:
@@ -330,7 +349,8 @@ def cmd_dashboard(args) -> int:
     url = f"http://127.0.0.1:{port}/"
     print(f"任务清单：{url}（Ctrl-C 退出）")
     with contextlib.suppress(Exception):
-        webbrowser.open(url)
+        if not args.no_browser:
+            webbrowser.open(url)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -376,6 +396,8 @@ def main(argv=None) -> int:
     _configure_console()
     p = argparse.ArgumentParser(prog="bbwatch")
     sub = p.add_subparsers(dest="cmd", required=True)
+    from .launchagent import add_parser
+    add_parser(sub)
     p_setup = sub.add_parser("setup", help="录入并保存学校账号密码到钥匙串")
     p_setup.add_argument("--stdin", action="store_true", help="从 stdin 读两行(账号/密码)，非交互")
     p_setup.set_defaults(fn=cmd_setup)
@@ -391,6 +413,7 @@ def main(argv=None) -> int:
     p_undone.set_defaults(fn=cmd_undone)
     p_dash = sub.add_parser("dashboard", help="启动本地任务清单网页(浏览器查看/勾选)")
     p_dash.add_argument("--port", type=int, help="端口(默认 8765)")
+    p_dash.add_argument("--no-browser", action="store_true", help="启动时不打开浏览器")
     p_dash.set_defaults(fn=cmd_dashboard)
     sub.add_parser("courses", help="列出在读课程(编号)").set_defaults(fn=cmd_courses)
     p_dl = sub.add_parser("download", help="增量镜像某课程的全部课件")

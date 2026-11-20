@@ -204,6 +204,20 @@ Windows CLI 用户运行 `bbwatch dashboard`；Claude Code 用户使用[实际�
 
 <a id="commands"></a>
 
+## macOS 登录自动运行
+
+无需打开 AI 客户端，可通过用户级 LaunchAgent 在登录后自动启动看板，并定时扫描、
+增量下载指定课程到固定目录，保留运行日志。安装及管理命令见
+[macOS 自动运行指南](INSTALL.md#macos-登录自动运行无需-ai-客户端)。
+
+```bash
+bbwatch agent install --interval 3600 --courses MAT3007 CSC1001 --dest "$HOME/Documents/Blackboard"
+bbwatch agent status
+bbwatch agent uninstall
+```
+
+请先完成独立 CLI 安装、`setup` 和 `whoami`，并替换示例中的课程代码和目录。
+
 ## 命令速查
 
 下表以 `bbwatch` 表示入口：macOS Codex 用户可用 `~/.local/bin/bbwatch`，Windows CLI 用户直接使用 `bbwatch`；其他安装方式请使用对应环境中的完整路径。
@@ -243,7 +257,7 @@ Windows CLI 用户运行 `bbwatch dashboard`；Claude Code 用户使用[实际�
 <details>
 <summary><strong>它会一直在后台扫描吗？</strong></summary>
 
-Codex 默认按需运行，安装时不创建定时任务。Claude Code 在新会话中展示摘要，并在从未扫描或缓存超过两小时时尝试后台刷新。CLI 只在执行命令时工作；看板定期读取缓存，不等于定时扫描学校网站。
+Codex 默认按需运行，安装时不创建定时任务。Claude Code 在新会话中展示摘要，并在从未扫描或缓存超过两小时时尝试后台刷新。CLI 默认只在执行命令时工作；看板定期读取缓存，不等于定时扫描学校网站。macOS 用户可另外安装 `bbwatch agent install` 配置登录自动运行与周期扫描下载，详见 [自动运行指南](INSTALL.md#macos-登录自动运行无需-ai-客户端)。
 
 </details>
 

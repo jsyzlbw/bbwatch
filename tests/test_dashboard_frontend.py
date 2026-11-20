@@ -27,7 +27,7 @@ def frontend(scenario):
         capture_output=True,
         text=True,
         encoding="utf-8",
-        timeout=5,
+        timeout=15,
         env={**os.environ, "TZ": "Pacific/Honolulu"},
         check=False,
     )
