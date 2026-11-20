@@ -152,7 +152,9 @@ const initial = {
   scan: scanStatus(),
 };
 
-function run(source) { return vm.runInContext(source, context, { timeout: 1000 }); }
+// Intl initialization can exceed one second on a fresh Windows VM.
+// Keep a bounded execution timeout without treating this as a performance test.
+function run(source) { return vm.runInContext(source, context, { timeout: 5000 }); }
 function setState(value) { context.fixture = value; run('STATE = fixture'); }
 function materializeInlineScan() {
   const markup = element('board').innerHTML;

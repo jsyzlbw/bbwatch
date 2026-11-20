@@ -180,11 +180,6 @@ def manage(args) -> int:
 def run_sync(args) -> int:
     import fcntl
 
-    from . import cli
-    from .downloader import mirror
-    from .errors import AuthError
-    from .store import now_utc
-
     paths = AppPaths()
     paths.ensure_dirs()
     # launchd serializes this job; also protect against a manual agent run.
@@ -194,62 +189,70 @@ def run_sync(args) -> int:
         except BlockingIOError:
             print("已有同步任务运行，跳过")
             return 0
-        print(f"[{now_utc()}] 开始扫描及下载", flush=True)
-        failed = False
+        return sync_once(args)
+
+
+def sync_once(args) -> int:
+    """Platform-independent sync logic; the macOS entry point owns the process lock."""
+    from . import cli
+    from .downloader import mirror
+    from .errors import AuthError
+    from .store import now_utc
+
+    print(f"[{now_utc()}] 开始扫描及下载", flush=True)
+    failed = False
+    try:
+        client, store, auth_paths = cli._authed()
+    except Exception as exc:  # noqa: BLE001
+        print(f"认证失败，本轮停止：{exc}", flush=True)
+        print(f"[{now_utc()}] 同步结束，状态：失败/部分完成", flush=True)
+        return 1
+    try:
+        cfg = cli.load_config(auth_paths.config_path)
         try:
-            client, store, auth_paths = cli._authed()
-        except Exception as exc:  # noqa: BLE001
+            text, failed = cli.run_scan_with_status(
+                client,
+                store,
+                cli.MacNotifier(),
+                now=now_utc(),
+                course_filter=cli.make_course_filter(cfg),
+                archive_weeks=cfg.archive_overdue_weeks,
+            )
+            print(text, flush=True)
+        except AuthError as exc:
             print(f"认证失败，本轮停止：{exc}", flush=True)
             print(f"[{now_utc()}] 同步结束，状态：失败/部分完成", flush=True)
             return 1
-        try:
-            cfg = cli.load_config(auth_paths.config_path)
-            try:
-                text, failed = cli.run_scan_with_status(
-                    client,
-                    store,
-                    cli.MacNotifier(),
-                    now=now_utc(),
-                    course_filter=cli.make_course_filter(cfg),
-                    archive_weeks=cfg.archive_overdue_weeks,
-                )
-                print(text, flush=True)
-            except AuthError as exc:
-                print(f"认证失败，本轮停止：{exc}", flush=True)
-                print(f"[{now_utc()}] 同步结束，状态：失败/部分完成", flush=True)
-                return 1
-            except Exception as exc:  # noqa: BLE001
-                failed = True
-                print(f"扫描失败：{exc}", flush=True)
-            courses = [c for c in client.list_courses(client.get_me().id) if c.is_active]
-            seen = set()
-            for ref in args.courses:
-                try:
-                    course = cli.pick_course(courses, ref)
-                    if course.id in seen:
-                        continue
-                    seen.add(course.id)
-                    result = mirror(
-                        client, store, course, Path(args.dest).expanduser(), now=now_utc()
-                    )
-                    print(
-                        f"{course.course_id}: 下载 {result.downloaded}，跳过 {result.skipped}，"
-                        f"失败 {result.failed}",
-                        flush=True,
-                    )
-                    failed |= bool(result.failed)
-                    for error in result.errors:
-                        print(error, flush=True)
-                except Exception as exc:  # noqa: BLE001
-                    failed = True
-                    print(f"{ref}: {exc}", flush=True)
         except Exception as exc:  # noqa: BLE001
             failed = True
-            print(f"同步失败：{exc}", flush=True)
-        finally:
-            store.close()
-        print(f"[{now_utc()}] 同步结束，状态：{'失败/部分完成' if failed else '成功'}", flush=True)
-        return int(failed)
+            print(f"扫描失败：{exc}", flush=True)
+        courses = [c for c in client.list_courses(client.get_me().id) if c.is_active]
+        seen = set()
+        for ref in args.courses:
+            try:
+                course = cli.pick_course(courses, ref)
+                if course.id in seen:
+                    continue
+                seen.add(course.id)
+                result = mirror(client, store, course, Path(args.dest).expanduser(), now=now_utc())
+                print(
+                    f"{course.course_id}: 下载 {result.downloaded}，跳过 {result.skipped}，"
+                    f"失败 {result.failed}",
+                    flush=True,
+                )
+                failed |= bool(result.failed)
+                for error in result.errors:
+                    print(error, flush=True)
+            except Exception as exc:  # noqa: BLE001
+                failed = True
+                print(f"{ref}: {exc}", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        failed = True
+        print(f"同步失败：{exc}", flush=True)
+    finally:
+        store.close()
+    print(f"[{now_utc()}] 同步结束，状态：{'失败/部分完成' if failed else '成功'}", flush=True)
+    return int(failed)
 
 
 def add_parser(sub):

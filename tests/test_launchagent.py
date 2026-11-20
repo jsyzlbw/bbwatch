@@ -9,14 +9,12 @@ from bbwatch import cli, launchagent
 
 
 @pytest.fixture(autouse=True)
-def platform_dependencies(request, monkeypatch):
+def platform_dependencies(monkeypatch):
     # System-call simulations can run on Windows without a real Unix user ID.
     uid = launchagent.os.getuid() if hasattr(launchagent.os, "getuid") else 1000
     monkeypatch.setattr(
         launchagent, "os", argparse.Namespace(getuid=lambda: uid, replace=launchagent.os.replace)
     )
-    if request.node.name.startswith("test_sync"):
-        pytest.importorskip("fcntl")
 
 
 class FakeLaunchctl:
@@ -164,7 +162,7 @@ def test_sync_continues_after_scan_failure(tmp_path, monkeypatch, capsys):
         return argparse.Namespace(downloaded=1, skipped=0, failed=0, errors=[])
 
     monkeypatch.setattr("bbwatch.downloader.mirror", mirror)
-    assert launchagent.run_sync(argparse.Namespace(courses=["MAT3007"], dest=str(tmp_path))) == 1
+    assert launchagent.sync_once(argparse.Namespace(courses=["MAT3007"], dest=str(tmp_path))) == 1
     assert len(calls) == 1
     assert closed == [True]
     assert "同步结束，状态：失败/部分完成" in capsys.readouterr().out
@@ -188,12 +186,12 @@ def test_sync_continues_after_unknown_course(tmp_path, monkeypatch):
 
     monkeypatch.setattr("bbwatch.downloader.mirror", mirror)
     args = argparse.Namespace(courses=["MISSING", "MAT3007", "MAT3007"], dest=str(tmp_path))
-    assert launchagent.run_sync(args) == 1
+    assert launchagent.sync_once(args) == 1
     assert len(calls) == 1
 
 
 def test_sync_skips_when_locked(tmp_path, monkeypatch):
-    import fcntl
+    fcntl = pytest.importorskip("fcntl")
 
     monkeypatch.setenv("BBWATCH_HOME", str(tmp_path))
     with (tmp_path / "agent.lock").open("w") as lock:
@@ -259,8 +257,8 @@ def test_sync_downloads_incrementally_without_network(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "_authed", authed)
     destination = tmp_path / "download directory"
     args = argparse.Namespace(courses=["MAT3007"], dest=str(destination))
-    assert launchagent.run_sync(args) == 0
-    assert launchagent.run_sync(args) == 0
+    assert launchagent.sync_once(args) == 0
+    assert launchagent.sync_once(args) == 0
     assert len(calls) == 1
     assert (destination / "MAT3007" / "Content" / "slides.pdf").read_bytes() == (
         b"tiny offline test fixture"
@@ -369,7 +367,7 @@ def test_sync_authentication_rejection_only_attempted_once(tmp_path, monkeypatch
         raise CredentialError("rejected")
 
     monkeypatch.setattr(cli, "_authed", authed)
-    assert launchagent.run_sync(argparse.Namespace(courses=["MAT3007"], dest=str(tmp_path))) == 1
+    assert launchagent.sync_once(argparse.Namespace(courses=["MAT3007"], dest=str(tmp_path))) == 1
     assert len(attempts) == 1
     assert "同步结束，状态：失败/部分完成" in capsys.readouterr().out
 
@@ -390,7 +388,7 @@ def test_sync_scan_authentication_failure_skips_downloads(tmp_path, monkeypatch,
 
     monkeypatch.setattr(cli, "_authed", authed)
     monkeypatch.setattr(cli, "run_scan_with_status", scan)
-    assert launchagent.run_sync(argparse.Namespace(courses=["MAT3007"], dest=str(tmp_path))) == 1
+    assert launchagent.sync_once(argparse.Namespace(courses=["MAT3007"], dest=str(tmp_path))) == 1
     assert attempts == [True]
     assert closed == [True]
     assert "同步结束，状态：失败/部分完成" in capsys.readouterr().out
@@ -424,7 +422,7 @@ def test_sync_real_partial_scan_cannot_be_hidden_by_successful_download(
         return argparse.Namespace(downloaded=1, skipped=0, failed=0, errors=[])
 
     monkeypatch.setattr("bbwatch.downloader.mirror", mirror)
-    assert launchagent.run_sync(argparse.Namespace(courses=["MAT3007"], dest=str(tmp_path))) == 1
+    assert launchagent.sync_once(argparse.Namespace(courses=["MAT3007"], dest=str(tmp_path))) == 1
     assert downloads == [True]
     output = capsys.readouterr().out
     assert "部分维度失败" in output
@@ -473,3 +471,21 @@ def test_rollback_stop_failure_reports_job_and_keeps_configuration(system, monke
     assert files["dashboard"].exists()
     assert f"{launchagent.LABEL}.dashboard" in fake.loaded
     assert not files["sync"].exists()
+
+
+def test_sync_process_lock_released_after_failure(tmp_path, monkeypatch):
+    fcntl = pytest.importorskip("fcntl")
+    monkeypatch.setenv("BBWATCH_HOME", str(tmp_path))
+    calls = []
+
+    def fail(args):
+        calls.append(args)
+        raise RuntimeError("sync failed")
+
+    monkeypatch.setattr(launchagent, "sync_once", fail)
+    args = argparse.Namespace()
+    with pytest.raises(RuntimeError, match="sync failed"):
+        launchagent.run_sync(args)
+    assert calls == [args]
+    with (tmp_path / "agent.lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
