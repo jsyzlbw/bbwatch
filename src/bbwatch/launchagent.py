@@ -6,6 +6,7 @@ import os
 import plistlib
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from .config import AppPaths
@@ -54,7 +55,80 @@ def build_agents(
 
 
 def launchctl(*args: str, check: bool = True):
-    return subprocess.run(["/bin/launchctl", *args], check=check)
+    return subprocess.run(["/bin/launchctl", *args], check=check, capture_output=True, text=True)
+
+
+def loaded(target: str) -> bool:
+    result = launchctl("print", target, check=False)
+    if result.returncode == 0:
+        return True
+    # launchctl's explicit "service not found" result, not an arbitrary failure.
+    if result.returncode == 113:
+        return False
+    raise RuntimeError(f"无法查询任务 {target}: {result.stderr}")
+
+
+def stop(target: str) -> None:
+    result = launchctl("bootout", target, check=False)
+    if result.returncode == 0:
+        return
+    # A failed bootout is harmless only if the service is confirmed absent.
+    if not loaded(target):
+        return
+    raise RuntimeError(f"任务未能停止 {target}: {result.stderr}")
+
+
+def write_config(file: Path, data: bytes, mode: int = 0o600) -> None:
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=file.parent, delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(data)
+            stream.flush()
+        temporary.chmod(mode)
+        os.replace(temporary, file)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def install_jobs(files: dict[str, Path], jobs: dict[str, dict], domain: str) -> None:
+    previous = {}
+    for kind, file in files.items():
+        data = file.read_bytes() if file.exists() else None
+        if data is not None and plistlib.loads(data).get("Label") != jobs[kind]["Label"]:
+            raise ValueError(f"拒绝覆盖其他任务：{file}")
+        target = f"{domain}/{LABEL}.{kind}"
+        active = loaded(target)
+        if active and data is None:
+            raise ValueError(f"已加载任务缺少原配置，无法安全更新：{target}")
+        previous[kind] = (data, file.stat().st_mode & 0o777 if data else 0o600, active)
+    touched = []
+    try:
+        for kind, file in files.items():
+            target = f"{domain}/{LABEL}.{kind}"
+            stop(target)
+            touched.append(kind)
+            write_config(file, plistlib.dumps(jobs[kind]))
+            # Do not change launchd's persistent enabled/disabled overrides.
+            launchctl("bootstrap", domain, str(file))
+    except Exception as exc:
+        errors = []
+        for kind in reversed(touched):
+            file = files[kind]
+            data, mode, active = previous[kind]
+            try:
+                stop(f"{domain}/{LABEL}.{kind}")
+                if data is None:
+                    file.unlink(missing_ok=True)
+                else:
+                    write_config(file, data, mode)
+                if active:
+                    launchctl("bootstrap", domain, str(file))
+            except Exception as rollback_error:  # noqa: BLE001
+                errors.append(f"{kind}: {rollback_error}")
+        detail = "；回滚未完整完成：" + "; ".join(errors) if errors else "；已恢复原配置及加载状态"
+        raise RuntimeError(f"安装/更新失败：{exc}{detail}") from exc
 
 
 def manage(args) -> int:
@@ -67,14 +141,21 @@ def manage(args) -> int:
     if args.action == "status":
         for kind, file in files.items():
             print(f"{kind}: {file}（{'已安装' if file.exists() else '未安装'}）", flush=True)
-            launchctl("print", f"{domain}/{LABEL}.{kind}", check=False)
+            result = launchctl("print", f"{domain}/{LABEL}.{kind}", check=False)
+            print(result.stdout, end="")
+            print(result.stderr, end="", file=sys.stderr)
         return 0
     if args.action == "uninstall":
+        failed = False
         for kind, file in files.items():
-            launchctl("bootout", f"{domain}/{LABEL}.{kind}", check=False)
-            file.unlink(missing_ok=True)
-        print("已移除自动运行任务；保留数据、课件及日志")
-        return 0
+            try:
+                stop(f"{domain}/{LABEL}.{kind}")
+                file.unlink(missing_ok=True)
+                print(f"已移除任务：{kind}")
+            except Exception as exc:  # noqa: BLE001
+                failed = True
+                print(f"卸载失败，保留配置 {file}: {exc}", file=sys.stderr)
+        return int(failed)
     if args.action == "run":
         return run_sync(args)
     jobs = build_agents(
@@ -88,17 +169,9 @@ def manage(args) -> int:
     paths.ensure_dirs()
     logs = root / "launchagent-logs"
     logs.mkdir(mode=0o700, exist_ok=True)
-    for kind, file in files.items():
+    for file in files.values():
         file.parent.mkdir(parents=True, exist_ok=True)
-        # Refuse to replace another application's plist.
-        if file.exists() and plistlib.loads(file.read_bytes()).get("Label") != jobs[kind]["Label"]:
-            raise ValueError(f"拒绝覆盖其他任务：{file}")
-    for kind, file in files.items():
-        launchctl("bootout", f"{domain}/{LABEL}.{kind}", check=False)
-        file.write_bytes(plistlib.dumps(jobs[kind]))
-        file.chmod(0o600)
-        launchctl("enable", f"{domain}/{LABEL}.{kind}")
-        launchctl("bootstrap", domain, str(file))
+    install_jobs(files, jobs, domain)
     print(f"已安装并启动；登录后自动运行。看板：http://127.0.0.1:{args.port}/")
     print(f"周期：{args.interval} 秒；日志：{logs}")
     return 0
@@ -109,6 +182,7 @@ def run_sync(args) -> int:
 
     from . import cli
     from .downloader import mirror
+    from .errors import AuthError
     from .store import now_utc
 
     paths = AppPaths()
@@ -121,10 +195,32 @@ def run_sync(args) -> int:
             print("已有同步任务运行，跳过")
             return 0
         print(f"[{now_utc()}] 开始扫描及下载", flush=True)
-        scan_result = cli.main(["scan"])
-        client, store, _ = cli._authed()
-        failed = bool(scan_result)
+        failed = False
         try:
+            client, store, auth_paths = cli._authed()
+        except Exception as exc:  # noqa: BLE001
+            print(f"认证失败，本轮停止：{exc}", flush=True)
+            print(f"[{now_utc()}] 同步结束，状态：失败/部分完成", flush=True)
+            return 1
+        try:
+            cfg = cli.load_config(auth_paths.config_path)
+            try:
+                text, failed = cli.run_scan_with_status(
+                    client,
+                    store,
+                    cli.MacNotifier(),
+                    now=now_utc(),
+                    course_filter=cli.make_course_filter(cfg),
+                    archive_weeks=cfg.archive_overdue_weeks,
+                )
+                print(text, flush=True)
+            except AuthError as exc:
+                print(f"认证失败，本轮停止：{exc}", flush=True)
+                print(f"[{now_utc()}] 同步结束，状态：失败/部分完成", flush=True)
+                return 1
+            except Exception as exc:  # noqa: BLE001
+                failed = True
+                print(f"扫描失败：{exc}", flush=True)
             courses = [c for c in client.list_courses(client.get_me().id) if c.is_active]
             seen = set()
             for ref in args.courses:
@@ -147,6 +243,9 @@ def run_sync(args) -> int:
                 except Exception as exc:  # noqa: BLE001
                     failed = True
                     print(f"{ref}: {exc}", flush=True)
+        except Exception as exc:  # noqa: BLE001
+            failed = True
+            print(f"同步失败：{exc}", flush=True)
         finally:
             store.close()
         print(f"[{now_utc()}] 同步结束，状态：{'失败/部分完成' if failed else '成功'}", flush=True)
